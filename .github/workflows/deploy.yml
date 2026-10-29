@@ -44,7 +44,6 @@ jobs:
         env:
           TAG: ${{ needs.build.outputs.tag }}
         run: |
-          kubectl -n chabunsi get secret ghcr >/dev/null 2>&1 || { echo "::error::이미지 pull 시크릿 ghcr가 없다 (README 관리자 1회 설정)"; exit 1; }
           helm upgrade --install chabunsi charts/chabunsi -n chabunsi --set image.tag=$TAG --wait --timeout 5m
           kubectl -n chabunsi get pods -o wide
           echo "## 배포 ✅ \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"

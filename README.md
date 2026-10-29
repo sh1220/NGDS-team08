@@ -5,7 +5,7 @@
 | 경로 | 내용 |
 |---|---|
 | `app/` | FastMCP 서버 (`/mcp`, 메트릭 `:9000/metrics`) |
-| `Dockerfile` | 이미지 (`ghcr.io/sh1220/chabunsi`) |
+| `Dockerfile` | 이미지 (`ghcr.io/sh1220/chabunsi`, **public** 패키지 — 코드가 이미지에 들어가니 비밀값을 넣지 말 것) |
 | `charts/chabunsi/` | 헬름 차트 (Deployment, Service, ServiceMonitor) |
 | `cluster/` | 네임스페이스·팀원 권한, 팀원 kubeconfig 발급 스크립트 (관리자용) |
 | `Makefile` | build / push / deploy / undeploy |
@@ -35,8 +35,6 @@ make undeploy      # helm uninstall
 ## 관리자 1회 설정
 ```bash
 make cluster-init                                  # 네임스페이스·권한
-kubectl -n chabunsi create secret docker-registry ghcr \
-  --docker-server=ghcr.io --docker-username=<GitHub ID> --docker-password=<read:packages 토큰>
 cluster/issue-kubeconfig.sh <팀원이름> [API 주소]   # 팀원 kubeconfig (90일)
 cluster/runner-setup.sh                            # 앱 러너 등록 (CI 배포용, 90일마다 재실행해 kubeconfig 갱신)
 ```
