@@ -1,0 +1,3 @@
+kubeconfig-*.yaml
+__pycache__/
+.venv/

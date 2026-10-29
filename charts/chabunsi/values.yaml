@@ -1,0 +1,16 @@
+image:
+  repository: ghcr.io/sh1220/chabunsi
+  tag: latest # make deploy 가 git 커밋으로 덮어쓴다
+# GHCR 패키지가 private이면 이 이름의 docker-registry Secret을 네임스페이스에 만들어 둔다 (README)
+imagePullSecrets:
+  - name: ghcr
+replicas: 1
+service:
+  type: ClusterIP # 집 LAN에서 바로 붙으려면 LoadBalancer (Cilium이 .244~.254 중 하나 배정)
+  port: 8000
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { memory: 512Mi }
+# 클러스터에 kube-prometheus-stack(홈랩 ④ 단계)이 올라온 뒤 true
+serviceMonitor:
+  enabled: false

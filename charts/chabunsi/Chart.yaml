@@ -1,0 +1,6 @@
+apiVersion: v2
+name: chabunsi
+description: 차분시(차세대 분산 시스템) MCP 서버
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

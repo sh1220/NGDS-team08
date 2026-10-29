@@ -1,0 +1,30 @@
+# 클러스터 관리자가 한 번만 적용한다: make cluster-init
+# 팀원(그룹 chabunsi-devs)은 이 네임스페이스 안에서만 배포·조회·삭제할 수 있다. 다른 네임스페이스·노드·클러스터 설정은 불가.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chabunsi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chabunsi-dev
+  namespace: chabunsi
+rules:
+  - apiGroups: ["", "apps", "batch", "autoscaling", "policy", "networking.k8s.io", "gateway.networking.k8s.io", "monitoring.coreos.com"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chabunsi-devs
+  namespace: chabunsi
+subjects:
+  - kind: Group
+    name: chabunsi-devs
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: chabunsi-dev
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,2 @@
+fastmcp==4.1.4
+prometheus-client==0.26.0
