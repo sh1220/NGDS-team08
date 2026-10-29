@@ -59,3 +59,38 @@ roleRef:
   kind: Role
   name: chabunsi-dev
   apiGroup: rbac.authorization.k8s.io
+---
+# CI 러너(LXC 112) 전용: 차트가 만드는 리소스와 helm 릴리스 Secret만. exec·port-forward·삭제된 리소스 외 권한 없음.
+# 팀원 권한(chabunsi-devs)과 따로 회수할 수 있다: kubectl delete rolebinding -n chabunsi chabunsi-ci
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chabunsi-ci
+  namespace: chabunsi
+rules:
+  - apiGroups: ["apps"]
+    resources: [deployments, replicasets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [services, configmaps, secrets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: [servicemonitors]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods, events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chabunsi-ci
+  namespace: chabunsi
+subjects:
+  - kind: Group
+    name: chabunsi-ci
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: chabunsi-ci
+  apiGroup: rbac.authorization.k8s.io
