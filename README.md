@@ -10,7 +10,15 @@
 | `cluster/` | 네임스페이스·팀원 권한, 팀원 kubeconfig 발급 스크립트 (관리자용) |
 | `Makefile` | build / push / deploy / undeploy |
 
-## 배포
+## CI/CD
+| 워크플로 | 트리거 | 러너 | 내용 |
+|---|---|---|---|
+| `ci.yml` | PR → main | GitHub 호스팅 | py_compile, helm lint/template, docker build |
+| `deploy.yml` | main push(`app/`, `Dockerfile`, `charts/`), 수동 | 호스팅(빌드·GHCR push) → 홈랩 앱 러너(배포) | `helm upgrade --install --wait`, 태그 = 커밋 7자리 |
+
+앱 러너(LXC 112, 라벨 `chabunsi`)는 이 네임스페이스 전용 kubeconfig만 가진다. 설정: `cluster/runner-setup.sh`(관리자, 재실행 가능).
+
+## 수동 배포
 ```bash
 make push          # 이미지 빌드 + GHCR 업로드 (docker login ghcr.io)
 make deploy        # helm upgrade --install (네임스페이스 chabunsi)
@@ -30,5 +38,6 @@ make cluster-init                                  # 네임스페이스·권한
 kubectl -n chabunsi create secret docker-registry ghcr \
   --docker-server=ghcr.io --docker-username=<GitHub ID> --docker-password=<read:packages 토큰>
 cluster/issue-kubeconfig.sh <팀원이름> [API 주소]   # 팀원 kubeconfig (90일)
+cluster/runner-setup.sh                            # 앱 러너 등록 (CI 배포용, 90일마다 재실행해 kubeconfig 갱신)
 ```
 프로젝트 종료: `kubectl delete ns chabunsi`

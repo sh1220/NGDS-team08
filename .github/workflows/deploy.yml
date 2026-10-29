@@ -1,0 +1,50 @@
+# main 머지 → 이미지 빌드·GHCR push(GitHub 호스팅) → 홈랩 앱 러너(LXC 112, 라벨 chabunsi)가 helm 배포
+# 앱 러너는 chabunsi 네임스페이스 전용 kubeconfig만 가진다 (cluster/runner-setup.sh)
+name: deploy
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "Dockerfile", "charts/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: tag
+        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: build & push
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build -t ghcr.io/sh1220/chabunsi:$TAG -t ghcr.io/sh1220/chabunsi:latest .
+          docker push ghcr.io/sh1220/chabunsi:$TAG
+          docker push ghcr.io/sh1220/chabunsi:latest
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, chabunsi]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: helm upgrade
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          kubectl -n chabunsi get secret ghcr >/dev/null 2>&1 || { echo "::error::이미지 pull 시크릿 ghcr가 없다 (README 관리자 1회 설정)"; exit 1; }
+          helm upgrade --install chabunsi charts/chabunsi -n chabunsi --set image.tag=$TAG --wait --timeout 5m
+          kubectl -n chabunsi get pods -o wide
+          echo "## 배포 ✅ \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
