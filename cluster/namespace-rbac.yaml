@@ -4,6 +4,10 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: chabunsi
+  labels:
+    # 특권 파드·hostPath·root 실행을 거부한다(노드 탈취 방지). 차트의 파드는 restricted 기준을 맞춘다
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -11,9 +15,36 @@ metadata:
   name: chabunsi-dev
   namespace: chabunsi
 rules:
-  - apiGroups: ["", "apps", "batch", "autoscaling", "policy", "networking.k8s.io", "gateway.networking.k8s.io", "monitoring.coreos.com"]
-    resources: ["*"]
-    verbs: ["*"]
+  # 앱 배포 (helm upgrade --install / uninstall)
+  - apiGroups: ["apps"]
+    resources: [deployments, statefulsets, replicasets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [services, configmaps, persistentvolumeclaims, serviceaccounts]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # helm은 릴리스 기록을 이 네임스페이스의 Secret에 저장한다. 이미지 pull Secret도 여기
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: ["batch"]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: ["networking.k8s.io"]
+    resources: [networkpolicies, ingresses]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: [servicemonitors]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # 디버깅: 파드 조회·로그·exec·port-forward, 이벤트
+  - apiGroups: [""]
+    resources: [pods, pods/log, events, endpoints]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+  - apiGroups: [""]
+    resources: [pods/exec, pods/portforward]
+    verbs: [create]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
