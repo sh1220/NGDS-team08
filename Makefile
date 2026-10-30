@@ -31,10 +31,9 @@ seed:
 up: deploy seed
 
 pf:
-	@echo "port-forwarding prometheus:9090 loki:3100 neo4j:7687,7474 mcp:8000 (Ctrl-C to stop)"
+	@echo "neo4j:7687,7474 mcp:8000 port-forward, prometheus·loki는 kubectl proxy :8001 경유 (.env.example 참고, Ctrl-C to stop)"
 	@trap 'kill 0' INT TERM; \
-	  kubectl -n $(MON_NS) port-forward svc/prometheus 9090:9090 & \
-	  kubectl -n $(MON_NS) port-forward svc/loki 3100:3100 & \
+	  kubectl proxy --port 8001 & \
 	  kubectl -n $(NS) port-forward svc/neo4j 7687:7687 7474:7474 & \
 	  kubectl -n $(NS) port-forward svc/mcp 8000:8000 & \
 	  wait

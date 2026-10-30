@@ -10,7 +10,7 @@ MAPE-K 관점에서 Knowledge는 그래프로 외부화하고, Analyze는 LLM과
 | 네임스페이스 | Pod Security | 내용 | 배포 주체 | 팀원 권한 |
 |---|---|---|---|---|
 | `ngds` | restricted | postgres(+exporter 사이드카), neo4j, mcp — `charts/ngds` | main 머지 → `deploy.yml` → 앱 러너(LXC 112, 라벨 `ngds`) | 배포·exec·port-forward·부하 파드 생성 |
-| `ngds-monitoring` | privileged | Prometheus, Loki, promtail, node-exporter, kube-state-metrics — `charts/ngds-monitoring` | 홈랩 인프라 레포 helmfile(관리자), 이 레포 커밋 SHA로 고정 | 조회·로그·port-forward만 |
+| `ngds-monitoring` | privileged | Prometheus, Loki, promtail, node-exporter, kube-state-metrics — `charts/ngds-monitoring` | 홈랩 인프라 레포 helmfile(관리자), 이 레포 커밋 SHA로 고정 | 조회·로그, Prometheus·Loki Service 프록시만 (port-forward 없음) |
 
 - **두 네임스페이스로 나눈 이유:** 수집기는 hostPath, hostNetwork, ClusterRole이 필요하다. 그 네임스페이스에 파드를 만들 수 있으면 노드 root를 잡을 수 있다. 그래서 팀원과 앱 러너는 restricted인 `ngds`에서만 파드를 만든다.
 - **`charts/ngds-monitoring`을 바꾸려면:** 이 레포에서 PR을 머지한 뒤, 관리자가 인프라 레포의 고정 SHA를 올려야 반영된다.
@@ -31,7 +31,7 @@ MAPE-K 관점에서 Knowledge는 그래프로 외부화하고, Analyze는 LLM과
 ### 팀원 시작하기
 1. 관리자에게 `kubeconfig-<이름>.yaml`을 받아 `export KUBECONFIG=...`로 지정한다. `ngds` 네임스페이스 전용이고 90일 동안 유효하다.
 2. 새 클러스터가 올라오면 한 번 `make seed`를 실행한다. KG를 적재하고 pgbench 테이블을 만든다. Neo4j는 emptyDir라서 neo4j 파드가 재시작될 때마다 다시 해야 한다.
-3. 다른 터미널에서 `make pf`를 실행한다. prometheus 9090, loki 3100, neo4j 7687/7474, mcp 8000이 열린다.
+3. 다른 터미널에서 `make pf`를 실행한다. neo4j 7687/7474, mcp 8000 포트 포워딩과 Prometheus·Loki용 `kubectl proxy :8001`이 열린다. 주소는 `.env.example` 참고.
 4. 장애 주입: `make fault-*`, 원복: `make fault-clear`. 아래 표 참고.
 
 ### 관리자
@@ -81,7 +81,7 @@ STEP3 query_promql / query_logql ── KG가 가리킨 메트릭·로그만 원
 ```bash
 make image    # (직접 테스트할 때) amd64 빌드 + GHCR push. 평소에는 main 머지 시 CI가 한다
 make up       # helm upgrade --install ngds + KG 적재 + pgbench 테이블 생성
-make pf       # (별도 터미널) prometheus 9090, loki 3100, neo4j 7687/7474, mcp 8000
+make pf       # (별도 터미널) neo4j 7687/7474, mcp 8000, kubectl proxy 8001(Prometheus·Loki)
 ```
 MCP 클라이언트 연결:
 - HTTP(클러스터 안 서버): `http://localhost:8000/mcp`
