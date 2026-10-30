@@ -75,7 +75,7 @@ rules:
   - apiGroups: [""]
     resources: [services/proxy]
     resourceNames: ["prometheus:9090", "loki:3100"]  # 프록시 경로의 <서비스>:<포트> 그대로 매칭된다
-    verbs: [get, create]
+    verbs: [get]  # GET 조회만 (POST면 Loki 로그 주입·삭제 API까지 열린다). MCP 클라이언트도 GET만 쓴다
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
