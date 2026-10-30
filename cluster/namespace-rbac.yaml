@@ -1,7 +1,7 @@
 # 클러스터 관리자가 적용한다: make cluster-init (재적용 가능)
 #   ngds            앱(postgres, neo4j, mcp). Pod Security restricted. 팀원(ngds-devs)이 배포·exec·장애 주입, 앱 러너(ngds-ci)가 CI 배포
 #   ngds-monitoring 수집기(Prometheus, Loki, promtail, node-exporter, kube-state-metrics). hostPath·hostNetwork가 필요해 privileged.
-#                   여기에 파드를 만들 수 있으면 노드 root와 같다 → 팀원·앱 러너는 조회·로그·port-forward만. 배포는 홈랩 인프라 레포 helmfile(관리자)
+#                   여기에 파드를 만들 수 있으면 노드 root와 같다 → 팀원·앱 러너는 조회만. 배포는 monitoring.yml(main + 관리자 승인)
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -112,3 +112,71 @@ metadata:
 subjects:
   - {kind: Group, name: ngds-ci, apiGroup: rbac.authorization.k8s.io}
 roleRef: {kind: Role, name: ngds-ci, apiGroup: rbac.authorization.k8s.io}
+---
+# ---- 수집기 배포 (NGDS 레포 .github/workflows/monitoring.yml, Environment "monitoring" 승인 후) ----
+# 그룹 ngds-monitoring-ci 인증서는 러너 디스크가 아니라 GitHub Environment secret에만 있다 (cluster/runner-setup.sh가 갱신).
+# privileged 네임스페이스라 이 권한 = 노드 root와 같다 → main 브랜치 + 관리자 승인을 거친 job만 받는다.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ngds-monitoring-ci
+  namespace: ngds-monitoring
+rules:
+  - apiGroups: ["apps"]
+    resources: [deployments, daemonsets, replicasets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [services, configmaps, secrets, serviceaccounts]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods, events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ngds-monitoring-ci
+  namespace: ngds-monitoring
+subjects:
+  - {kind: Group, name: ngds-monitoring-ci, apiGroup: rbac.authorization.k8s.io}
+roleRef: {kind: Role, name: ngds-monitoring-ci, apiGroup: rbac.authorization.k8s.io}
+---
+# 수집기 ServiceAccount의 클러스터 전역 조회 권한 (차트가 아니라 여기서: 배포 주체가 ClusterRole을 못 만들게)
+# Prometheus: 파드·서비스 발견 + kubelet 지표. nodes/proxy는 kubelet exec까지 열려 주지 않는다
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ngds-prometheus
+rules:
+  - apiGroups: [""]
+    resources: [nodes, nodes/metrics, pods, services, endpoints]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ngds-prometheus
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: ngds-prometheus}
+subjects:
+  - {kind: ServiceAccount, name: prometheus, namespace: ngds-monitoring}
+---
+# kube-state-metrics: --resources 에 넣은 것만 (Secret 제외)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ngds-kube-state-metrics
+rules:
+  - apiGroups: [""]
+    resources: [pods, nodes]
+    verbs: [list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ngds-kube-state-metrics
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: ngds-kube-state-metrics}
+subjects:
+  - {kind: ServiceAccount, name: kube-state-metrics, namespace: ngds-monitoring}
