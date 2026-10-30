@@ -1,0 +1,127 @@
+{{- define "so.prometheus.config" }}
+global:
+  scrape_interval: {{ .Values.prometheus.scrapeInterval }}
+  evaluation_interval: {{ .Values.prometheus.scrapeInterval }}
+scrape_configs:
+  # node-exporter, kube-state-metrics, postgres_exporter (annotated pods in this namespace)
+  - job_name: pods
+    honor_labels: true
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces: {names: [{{ .Release.Namespace }}]}
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - source_labels: [__meta_kubernetes_pod_phase]
+        action: drop
+        regex: (Succeeded|Failed)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+        target_label: job
+  # kubelet (PVC volume stats) and cAdvisor (container layer), via the API server proxy
+  # so it works on managed clusters where pods cannot reach node:10250 directly
+{{- range $job, $path := dict "kubelet" "metrics" "cadvisor" "metrics/cadvisor" }}
+  - job_name: {{ $job }}
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    authorization:
+      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/$1/proxy/{{ $path }}
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-prometheus
+rules:
+  - apiGroups: [""]
+    resources: [nodes, nodes/metrics, nodes/proxy, pods, services, endpoints]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-prometheus
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ .Release.Name }}-prometheus}
+subjects:
+  - {kind: ServiceAccount, name: prometheus, namespace: {{ .Release.Namespace }}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    {{- include "so.prometheus.config" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  labels: {{- include "so.labels" "prometheus" | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/name: prometheus}
+  ports:
+    - {name: http, port: 9090}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  labels: {{- include "so.labels" "prometheus" | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: prometheus}
+  template:
+    metadata:
+      labels: {{- include "so.labels" "prometheus" | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "so.prometheus.config" . | sha256sum | trunc 12 }}
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: {{ .Values.prometheus.image }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time={{ .Values.prometheus.retention }}
+          ports:
+            - {name: http, containerPort: 9090}
+          readinessProbe:
+            httpGet: {path: /-/ready, port: http}
+          resources: {{- toYaml .Values.prometheus.resources | nindent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus}
+            - {name: data, mountPath: /prometheus}
+      volumes:
+        - name: config
+          configMap: {name: prometheus-config}
+        - name: data
+          emptyDir: {}

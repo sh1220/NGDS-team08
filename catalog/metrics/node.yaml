@@ -1,0 +1,32 @@
+layer: node
+metrics:
+  node_fs_avail_ratio:
+    name: Data filesystem available bytes ratio
+    unit: ratio
+    promql: |
+      node_filesystem_avail_bytes{mountpoint="{mountpoint}"} / node_filesystem_size_bytes{mountpoint="{mountpoint}"}
+  node_fs_avail_bytes:
+    name: Data filesystem available bytes
+    unit: bytes
+    promql: |
+      node_filesystem_avail_bytes{mountpoint="{mountpoint}"}
+  node_fs_inodes_free_ratio:
+    name: Data filesystem free inode ratio
+    unit: ratio
+    promql: |
+      node_filesystem_files_free{mountpoint="{mountpoint}"} / node_filesystem_files{mountpoint="{mountpoint}"}
+  node_fs_inodes_free:
+    name: Data filesystem free inodes
+    unit: count
+    promql: |
+      node_filesystem_files_free{mountpoint="{mountpoint}"}
+  node_cpu_busy_ratio:
+    name: Node CPU busy ratio
+    unit: ratio
+    promql: |
+      1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[{window}]))
+  node_mem_avail_ratio:
+    name: Node memory available ratio
+    unit: ratio
+    promql: |
+      node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes

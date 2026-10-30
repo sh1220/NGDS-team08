@@ -1,0 +1,62 @@
+# Installed into an existing cluster, release namespace (Makefile NS, default semantic-obs).
+
+postgres:
+  image: postgres:16
+  user: postgres
+  password: postgres
+  database: app
+  # PVC for PGDATA (empty storageClass = cluster default). Kept small so the disk fault fills it fast.
+  storage: 1Gi
+  storageClass: ""
+  # node filesystem (node-exporter mountpoint) that holds the PVC; "/" for local-path style storage
+  nodeMountpoint: /
+  # small limits so faults are easy to inject (scripts/faults/*.sh patch these)
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 384Mi}
+  exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 200m, memory: 128Mi}
+
+neo4j:
+  image: neo4j:5.26-community
+  password: semantic-obs   # >= 8 chars
+  resources:
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+mcp:
+  image: semantic-obs-mcp:dev   # Makefile overrides with $(IMAGE) (a registry the cluster can pull from)
+  port: 8000
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+prometheus:
+  image: prom/prometheus:v3.5.0
+  retention: 6h
+  scrapeInterval: 15s
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+loki:
+  image: grafana/loki:3.5.0
+  retention: 24h
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+promtail:
+  image: grafana/promtail:3.5.0
+
+# turn off if the cluster already runs these (hostNetwork :9100 would conflict)
+nodeExporter:
+  enabled: true
+  image: prom/node-exporter:v1.9.1
+
+kubeStateMetrics:
+  enabled: true
+  image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.15.0

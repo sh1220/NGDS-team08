@@ -1,0 +1,5 @@
+.venv
+.env
+helm
+eval
+**/__pycache__

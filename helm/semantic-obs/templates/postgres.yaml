@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  labels: {{- include "so.labels" "postgres" | nindent 4 }}
+data:
+  postgresql.conf: |
+    listen_addresses = '*'
+    shared_buffers = 32MB
+    max_connections = 50
+    # keep WAL small so the small PVC is not filled by WAL alone
+    max_wal_size = 128MB
+    min_wal_size = 32MB
+    # logging used by catalog/logs/application.yaml
+    log_lock_waits = on
+    deadlock_timeout = 1s
+    log_checkpoints = on
+    checkpoint_warning = 30s
+    log_min_duration_statement = 1000
+  # postgres_exporter custom queries (metric = <name>_<column>)
+  queries.yaml: |
+    pg_blocked:
+      query: "SELECT count(*) AS backends FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid)) > 0"
+      metrics:
+        - backends: {usage: GAUGE, description: "Backends blocked by another backend's lock"}
+    pg_backend_wait:
+      query: "SELECT coalesce(wait_event_type, 'CPU') AS wait_event_type, count(*) AS backends FROM pg_stat_activity WHERE state = 'active' AND backend_type = 'client backend' AND pid <> pg_backend_pid() GROUP BY 1"
+      metrics:
+        - wait_event_type: {usage: LABEL, description: "wait_event_type (CPU = not waiting)"}
+        - backends: {usage: GAUGE, description: "Active client backends"}
+    pg_longest_query:
+      query: "SELECT greatest(0, coalesce(max(extract(epoch FROM now() - query_start)), 0)) AS seconds FROM pg_stat_activity WHERE state = 'active' AND backend_type = 'client backend' AND pid <> pg_backend_pid()"
+      metrics:
+        - seconds: {usage: GAUGE, description: "Longest running active query"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels: {{- include "so.labels" "postgres" | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/name: postgres}
+  ports:
+    - {name: pg, port: 5432}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels: {{- include "so.labels" "postgres" | nindent 4 }}
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: postgres}
+  template:
+    metadata:
+      labels: {{- include "so.labels" "postgres" | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        checksum/config: {{ .Values.postgres | toJson | sha256sum | trunc 12 }}
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          args: ["-c", "config_file=/etc/postgresql/postgresql.conf"]
+          env:
+            - {name: POSTGRES_USER, value: {{ .Values.postgres.user | quote }}}
+            - {name: POSTGRES_PASSWORD, value: {{ .Values.postgres.password | quote }}}
+            - {name: POSTGRES_DB, value: {{ .Values.postgres.database | quote }}}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          ports:
+            - {name: pg, containerPort: 5432}
+          readinessProbe:
+            exec: {command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}]}
+            periodSeconds: 5
+          resources: {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            - {name: config, mountPath: /etc/postgresql/postgresql.conf, subPath: postgresql.conf}
+        - name: exporter
+          image: {{ .Values.postgres.exporter.image }}
+          args: ["--extend.query-path=/etc/exporter/queries.yaml"]
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://{{ .Values.postgres.user }}:{{ .Values.postgres.password }}@localhost:5432/{{ .Values.postgres.database }}?sslmode=disable"
+          ports:
+            - {name: metrics, containerPort: 9187}
+          resources: {{- toYaml .Values.postgres.exporter.resources | nindent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/exporter/queries.yaml, subPath: queries.yaml}
+      volumes:
+        - name: config
+          configMap: {name: postgres-config}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgres.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}
