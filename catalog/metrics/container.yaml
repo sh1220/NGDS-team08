@@ -1,0 +1,43 @@
+layer: container
+metrics:
+  ctr_mem_limit_ratio:
+    name: Working set / memory limit
+    unit: ratio
+    promql: |
+      sum by (pod, container) (container_memory_working_set_bytes{namespace="{namespace}",pod=~"{pod}",container="{container}"})
+      / sum by (pod, container) (container_spec_memory_limit_bytes{namespace="{namespace}",pod=~"{pod}",container="{container}"} > 0)
+  ctr_mem_limit_ratio_peak:
+    name: Peak working set / memory limit within window
+    unit: ratio
+    promql: |
+      max_over_time((
+        sum by (pod, container) (container_memory_working_set_bytes{namespace="{namespace}",pod=~"{pod}",container="{container}"})
+        / sum by (pod, container) (container_spec_memory_limit_bytes{namespace="{namespace}",pod=~"{pod}",container="{container}"} > 0)
+      )[{window}:15s])
+  ctr_mem_working_set_bytes:
+    name: Container working set bytes
+    unit: bytes
+    promql: |
+      sum by (pod, container) (container_memory_working_set_bytes{namespace="{namespace}",pod=~"{pod}",container="{container}"})
+  ctr_mem_limit_bytes:
+    name: Container memory limit bytes
+    unit: bytes
+    promql: |
+      max by (pod, container) (container_spec_memory_limit_bytes{namespace="{namespace}",pod=~"{pod}",container="{container}"})
+  ctr_cpu_throttle_ratio:
+    name: CFS throttled period ratio
+    unit: ratio
+    promql: |
+      sum by (pod, container) (rate(container_cpu_cfs_throttled_periods_total{namespace="{namespace}",pod=~"{pod}",container="{container}"}[{window}]))
+      / sum by (pod, container) (rate(container_cpu_cfs_periods_total{namespace="{namespace}",pod=~"{pod}",container="{container}"}[{window}]))
+  ctr_cpu_usage_cores:
+    name: Container CPU usage (cores)
+    unit: cores
+    promql: |
+      sum by (pod, container) (rate(container_cpu_usage_seconds_total{namespace="{namespace}",pod=~"{pod}",container="{container}"}[{window}]))
+  ctr_cpu_limit_cores:
+    name: Container CPU limit (cores)
+    unit: cores
+    promql: |
+      max by (pod, container) (container_spec_cpu_quota{namespace="{namespace}",pod=~"{pod}",container="{container}"}
+      / container_spec_cpu_period{namespace="{namespace}",pod=~"{pod}",container="{container}"})

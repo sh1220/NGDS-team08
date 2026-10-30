@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j
+  labels: {{- include "so.labels" "neo4j" | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/name: neo4j}
+  ports:
+    - {name: bolt, port: 7687}
+    - {name: http, port: 7474}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+  labels: {{- include "so.labels" "neo4j" | nindent 4 }}
+spec:
+  serviceName: neo4j
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: neo4j}
+  template:
+    metadata:
+      labels: {{- include "so.labels" "neo4j" | nindent 8 }}
+    spec:
+      # Service "neo4j" would inject NEO4J_PORT_* env vars, which neo4j parses as config
+      enableServiceLinks: false
+      # 공식 이미지의 neo4j 유저(uid 7474)로 바로 실행
+      {{- include "so.podSecurity" 7474 | nindent 6 }}
+      containers:
+        - name: neo4j
+          image: {{ .Values.neo4j.image }}
+          {{- include "so.containerSecurity" . | nindent 10 }}
+          env:
+            - {name: NEO4J_AUTH, value: "neo4j/{{ .Values.neo4j.password }}"}
+            - {name: NEO4J_server_memory_heap_initial__size, value: 256m}
+            - {name: NEO4J_server_memory_heap_max__size, value: 512m}
+            - {name: NEO4J_server_memory_pagecache_size, value: 128m}
+          ports:
+            - {name: bolt, containerPort: 7687}
+            - {name: http, containerPort: 7474}
+          readinessProbe:
+            tcpSocket: {port: 7687}
+            periodSeconds: 5
+          resources: {{- toYaml .Values.neo4j.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      # KG is re-seeded by `make seed`; no persistence needed
+      volumes:
+        - name: data
+          emptyDir: {}

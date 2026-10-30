@@ -1,0 +1,66 @@
+{{- define "so.promtail.config" }}
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+positions:
+  filename: /run/promtail/positions.yaml
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+scrape_configs:
+  # Tail the app namespace's pod logs directly; labels come from the CRI log path
+  # /var/log/pods/<namespace>_<pod>_<uid>/<container>/<n>.log
+  - job_name: pods
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: pods
+          __path__: /var/log/pods/{{ .Values.targetNamespace }}_*/*/*.log
+    pipeline_stages:
+      - cri: {}
+      - regex:
+          source: filename
+          expression: '^/var/log/pods/(?P<namespace>[^_]+)_(?P<pod>[^_]+)_[^/]+/(?P<container>[^/]+)/'
+      - labels: {namespace: "", pod: "", container: ""}
+      - labeldrop: [filename]
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+data:
+  promtail.yaml: |
+    {{- include "so.promtail.config" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: promtail
+  labels: {{- include "so.labels" "promtail" | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: promtail}
+  template:
+    metadata:
+      labels: {{- include "so.labels" "promtail" | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "so.promtail.config" . | sha256sum | trunc 12 }}
+    spec:
+      containers:
+        - name: promtail
+          image: {{ .Values.promtail.image }}
+          args: ["-config.file=/etc/promtail/promtail.yaml"]
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          volumeMounts:
+            - {name: config, mountPath: /etc/promtail}
+            - {name: run, mountPath: /run/promtail}
+            - {name: pods, mountPath: /var/log/pods, readOnly: true}
+      volumes:
+        - name: config
+          configMap: {name: promtail-config}
+        - name: run
+          emptyDir: {}
+        - name: pods
+          hostPath: {path: /var/log/pods}

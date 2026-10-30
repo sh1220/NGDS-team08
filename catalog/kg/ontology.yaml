@@ -1,0 +1,263 @@
+# Causal diagnostic knowledge graph — single source of truth, loaded into Neo4j by
+# scripts/seed_kg.py. Edges (branches) point symptom -> cause.
+# gate: {metric|log: <catalog id>, op, warn, anomaly}  — the condition that makes this node "true".
+# entry: true = symptom entry point (health probes / metrics enter here).
+# terminal: true = root cause (no further descent).
+
+nodes:
+  # ───────────── Chain 1: OOMKilled ─────────────
+  # app connection errors -> pod restart -> OOMKilled -> container memory at limit
+  - id: app_conn_errors
+    title: Clients lose connections / postgres crashed
+    layer: application
+    entry: true
+    symptoms: [connection error, server closed the connection, terminating connection, crash, pg down, unavailable]
+    gate: {log: pg_server_crash, op: ">", warn: 0.5, anomaly: 0.5}
+    metrics: [pg_up]
+    logs: [pg_server_crash, pg_conn_terminated, pg_client_conn_lost]
+    note: >
+      Connection loss is a symptom. Postgres either crashed in place (backend killed,
+      crash recovery) or its container was restarted by the kubelet. Check restarts first.
+    action: Do not tune connection pools until the lower-layer cause is known.
+    branches:
+      - to: k8s_pod_restart
+        when: postgres container restarts increased in window (pod_restarts > 0)
+      - to: app_write_errors
+        when: crash lines are preceded by 'No space left on device' / PANIC on write
+
+  - id: k8s_pod_restart
+    title: Postgres container restarted / not ready
+    layer: kubernetes
+    entry: true
+    symptoms: [restart, crashloop, not ready, CrashLoopBackOff]
+    gate: {metric: pod_restarts, op: ">", warn: 0.1, anomaly: 0.9}
+    metrics: [pod_restarts, pod_last_terminated_reason, pod_not_ready]
+    logs: [pg_server_crash]
+    note: >
+      The kubelet records why the previous container died. reason=OOMKilled points to the
+      container memory limit; reason=Error with write failures points to storage.
+    action: Read pod_last_terminated_reason before anything else.
+    branches:
+      - to: k8s_oomkilled
+        when: last terminated reason = OOMKilled
+      - to: app_write_errors
+        when: last terminated reason = Error and postgres logs show write failures (PANIC / No space)
+      - to: k8s_disk_pressure
+        when: pod was evicted / node reports DiskPressure
+      - to: ctr_cpu_throttling
+        when: pod NotReady without restarts — readiness probe (pg_isready) times out because the container is CPU-starved
+
+  - id: k8s_oomkilled
+    title: Container was OOMKilled
+    layer: kubernetes
+    entry: true
+    symptoms: [oom, oomkilled, out of memory, exit code 137]
+    gate: {metric: pod_last_terminated_oom, op: ">", warn: 0.5, anomaly: 0.5}
+    metrics: [pod_last_terminated_oom, pod_restarts]
+    logs: [pg_server_crash]
+    note: >
+      The kernel cgroup OOM killer terminated the container (exit 137). This is enforced
+      by the container memory limit, so the cause lives in the container layer.
+    action: Compare memory working set against the container limit.
+    branches:
+      - to: ctr_mem_near_limit
+        when: working set peak approached the memory limit before the kill
+
+  - id: ctr_mem_near_limit
+    title: Container memory working set at its limit
+    layer: container
+    entry: true
+    terminal: true
+    symptoms: [memory limit, memory pressure, working set]
+    gate: {metric: ctr_mem_limit_ratio_peak, op: ">", warn: 0.8, anomaly: 0.9}
+    metrics: [ctr_mem_limit_ratio_peak, ctr_mem_limit_ratio, ctr_mem_working_set_bytes, ctr_mem_limit_bytes]
+    note: >
+      ROOT CAUSE (container layer): memory limit too small for the workload (shared_buffers +
+      work_mem x concurrent sorts/hashes). Fast allocation spikes can be shorter than the
+      scrape interval, so a peak below the gate together with k8s_oomkilled is still sufficient evidence.
+    action: Raise resources.limits.memory or lower work_mem / shared_buffers / max_connections.
+
+  # ───────────── Chain 2: CPU throttling ─────────────
+  # active backends pile up -> query latency -> container CFS throttling
+  - id: app_backends_piling
+    title: Active backends piling up
+    layer: application
+    entry: true
+    symptoms: [many active connections, backends, saturation, slow, throughput drop]
+    gate: {metric: pg_active_backends, op: ">", warn: 5, anomaly: 10}
+    metrics: [pg_active_backends, pg_backends_by_wait, pg_xact_commit_rate]
+    note: >
+      Backends accumulate when each query takes longer than the arrival interval.
+      This is a symptom of latency; the wait_event_type breakdown tells what they wait on.
+    action: Inspect pg_backends_by_wait, then follow latency.
+    branches:
+      - to: app_query_latency
+        when: active backends high and query duration elevated
+
+  - id: app_query_latency
+    title: Query latency elevated
+    layer: application
+    entry: true
+    symptoms: [slow query, latency, timeout, duration]
+    gate: {metric: pg_longest_query_seconds, op: ">", warn: 2, anomaly: 10}
+    metrics: [pg_longest_query_seconds, pg_backends_by_wait, pg_max_tx_duration]
+    logs: [pg_slow_query]
+    note: >
+      Differential diagnosis on what slow backends wait on:
+      Lock -> lock contention (app layer); no wait event (CPU) -> CPU starvation (container
+      throttling); IO -> storage/WAL (node layer).
+    action: Look at pg_backends_by_wait and pick the matching branch.
+    branches:
+      - to: app_lock_contention
+        when: backends wait on Lock (pg_lock_wait_backends > 0, pg_blocked_backends > 0)
+      - to: ctr_cpu_throttling
+        when: backends are on CPU (wait_event_type=CPU) and not blocked
+      - to: app_io_wait
+        when: backends wait on IO / WAL
+
+  - id: ctr_cpu_throttling
+    title: Container CPU throttled by CFS quota
+    layer: container
+    entry: true
+    terminal: true
+    symptoms: [cpu throttling, cfs, cpu limit]
+    gate: {metric: ctr_cpu_throttle_ratio, op: ">", warn: 0.1, anomaly: 0.25}
+    metrics: [ctr_cpu_throttle_ratio, ctr_cpu_usage_cores, ctr_cpu_limit_cores, pg_cpu_backends]
+    note: >
+      ROOT CAUSE (container layer): CPU usage hits the CFS quota (resources.limits.cpu);
+      runnable backends are paused each period, stretching query latency even though
+      postgres itself reports no wait event.
+    action: Raise resources.limits.cpu (or remove the limit) or reduce concurrent CPU-heavy queries.
+
+  # ───────────── Chain 3: Disk / inode pressure ─────────────
+  # write errors / WAL-checkpoint delay -> (DiskPressure) -> node filesystem bytes|inodes low
+  - id: app_write_errors
+    title: Postgres cannot write (WAL / data files)
+    layer: application
+    entry: true
+    symptoms: [could not write, no space left, disk full, PANIC, write error]
+    gate: {log: pg_no_space, op: ">", warn: 0.5, anomaly: 2}
+    logs: [pg_no_space, pg_errors, pg_server_crash]
+    note: >
+      'No space left on device' is returned both when bytes and when inodes run out.
+      A WAL write failure PANICs postgres and can restart the container.
+    action: Check the data filesystem bytes and inodes on the node.
+    branches:
+      - to: node_fs_bytes_low
+        when: data filesystem available bytes ratio low
+      - to: node_fs_inodes_low
+        when: data filesystem free inode ratio low
+      - to: k8s_disk_pressure
+        when: kubelet reports DiskPressure on the node
+
+  - id: app_io_wait
+    title: Backends waiting on IO / WAL
+    layer: application
+    terminal: false
+    symptoms: [io wait, wal, fsync]
+    gate: {metric: pg_io_wait_backends, op: ">", warn: 1, anomaly: 3}
+    metrics: [pg_io_wait_backends, pg_backends_by_wait]
+    note: Write path is slow; check checkpoint behaviour and the underlying filesystem.
+    action: Follow checkpoint pressure and node filesystem.
+    branches:
+      - to: app_checkpoint_pressure
+        when: checkpoint warnings or frequent checkpoints in logs
+      - to: node_fs_bytes_low
+        when: data filesystem available bytes ratio low
+
+  - id: app_checkpoint_pressure
+    title: WAL / checkpoint pressure
+    layer: application
+    symptoms: [checkpoint, checkpoints too frequent, wal]
+    gate: {log: pg_checkpoint_warning, op: ">", warn: 0.5, anomaly: 3}
+    logs: [pg_checkpoint_warning, pg_checkpoint]
+    note: >
+      Checkpoints flush dirty buffers and recycle WAL; when the volume is nearly full they
+      stall or fail and writers wait.
+    action: Check node filesystem space; consider max_wal_size.
+    branches:
+      - to: node_fs_bytes_low
+        when: data filesystem available bytes ratio low
+      - to: node_fs_inodes_low
+        when: data filesystem free inode ratio low
+
+  - id: k8s_disk_pressure
+    title: Node reports DiskPressure
+    layer: kubernetes
+    entry: true
+    symptoms: [diskpressure, eviction, evicted]
+    gate: {metric: node_disk_pressure, op: ">", warn: 0.5, anomaly: 0.5}
+    metrics: [node_disk_pressure]
+    note: Kubelet eviction signal for the node root/image filesystem; may evict the pod.
+    action: Check node filesystem bytes and inodes.
+    branches:
+      - to: node_fs_bytes_low
+        when: filesystem available bytes ratio low
+      - to: node_fs_inodes_low
+        when: filesystem free inode ratio low
+
+  - id: node_fs_bytes_low
+    title: Node data filesystem out of space
+    layer: node
+    entry: true
+    terminal: true
+    symptoms: [disk full, filesystem, space]
+    gate: {metric: node_fs_avail_ratio, op: "<", warn: 0.2, anomaly: 0.05}
+    metrics: [node_fs_avail_ratio, node_fs_avail_bytes, pvc_avail_ratio]
+    note: ROOT CAUSE (node/storage layer). The filesystem backing PGDATA (node disk or PVC) has no free bytes.
+    action: Free space / grow the volume; find non-postgres files filling it.
+
+  - id: node_fs_inodes_low
+    title: Node data filesystem out of inodes
+    layer: node
+    entry: true
+    terminal: true
+    symptoms: [inode, too many files]
+    gate: {metric: node_fs_inodes_free_ratio, op: "<", warn: 0.2, anomaly: 0.05}
+    metrics: [node_fs_inodes_free_ratio, node_fs_inodes_free, pvc_inodes_free_ratio]
+    note: >
+      ROOT CAUSE (node layer). Free bytes may look fine but no inodes are left, so new
+      files (WAL segments, relation forks, temp files) cannot be created.
+    action: Remove the many small files; reformat with more inodes.
+
+  # ───────────── Chain 4: Application lock contention ─────────────
+  # active backends -> latency -> lock contention -> long tx holder / deadlocks
+  - id: app_lock_contention
+    title: Lock contention between backends
+    layer: application
+    entry: true
+    symptoms: [lock, blocked, waiting for lock, still waiting]
+    gate: {metric: pg_blocked_backends, op: ">", warn: 0.5, anomaly: 2}
+    metrics: [pg_blocked_backends, pg_lock_wait_backends, pg_locks_by_mode]
+    logs: [pg_lock_wait]
+    note: >
+      Backends are blocked by locks held by other backends — an application-layer cause;
+      lower layers are healthy (no throttling, no IO wait).
+    action: Find the blocker; check transaction length and deadlocks.
+    branches:
+      - to: app_long_tx_holder
+        when: a long open transaction holds the contended locks (pg_max_tx_duration high)
+      - to: app_deadlocks
+        when: deadlocks are being detected (pg_deadlocks_rate > 0, 'deadlock detected' logs)
+
+  - id: app_long_tx_holder
+    title: Long-running transaction holding locks
+    layer: application
+    terminal: true
+    symptoms: [long transaction, idle in transaction]
+    gate: {metric: pg_max_tx_duration, op: ">", warn: 30, anomaly: 120}
+    metrics: [pg_max_tx_duration, pg_blocked_backends]
+    note: ROOT CAUSE (application layer). One transaction keeps row locks for a long time; others queue behind it.
+    action: Terminate/shorten the holder; set idle_in_transaction_session_timeout / lock_timeout.
+
+  - id: app_deadlocks
+    title: Deadlocks between transactions
+    layer: application
+    entry: true
+    terminal: true
+    symptoms: [deadlock]
+    gate: {metric: pg_deadlocks_rate, op: ">", warn: 0.5, anomaly: 2}
+    metrics: [pg_deadlocks_rate]
+    logs: [pg_deadlock]
+    note: ROOT CAUSE (application layer). Transactions lock the same rows in different orders.
+    action: Enforce a consistent lock order in the application; keep transactions short.

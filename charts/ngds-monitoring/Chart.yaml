@@ -1,0 +1,7 @@
+apiVersion: v2
+name: ngds-monitoring
+description: NGDS 수집기 — Prometheus, Loki, promtail, node-exporter, kube-state-metrics. 네임스페이스 ngds-monitoring(privileged)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+# hostPath·hostNetwork·ClusterRole이 필요해 앱 러너가 아니라 홈랩 인프라 레포(helmfile, 커밋 SHA 고정)가 배포한다.

@@ -1,0 +1,64 @@
+# postgres_exporter (sidecar). pg_blocked_*, pg_backend_wait_*, pg_longest_query_* come from
+# custom queries in the exporter ConfigMap (charts/ngds/templates/postgres.yaml).
+layer: application
+metrics:
+  pg_up:
+    name: Postgres reachable by exporter (1 = up)
+    unit: bool
+    promql: |
+      min(pg_up{namespace="{namespace}",pod=~"{pod}"})
+  pg_active_backends:
+    name: Active client backends
+    unit: count
+    promql: |
+      sum(pg_stat_activity_count{namespace="{namespace}",pod=~"{pod}",state="active"})
+  pg_backends_by_wait:
+    name: Active backends by wait_event_type (CPU = not waiting)
+    unit: count
+    promql: |
+      sum by (wait_event_type) (pg_backend_wait_backends{namespace="{namespace}",pod=~"{pod}"})
+  pg_cpu_backends:
+    name: Active backends running on CPU (no wait event)
+    unit: count
+    promql: |
+      sum(pg_backend_wait_backends{namespace="{namespace}",pod=~"{pod}",wait_event_type="CPU"})
+  pg_lock_wait_backends:
+    name: Active backends waiting on Lock
+    unit: count
+    promql: |
+      sum(pg_backend_wait_backends{namespace="{namespace}",pod=~"{pod}",wait_event_type="Lock"})
+  pg_io_wait_backends:
+    name: Active backends waiting on IO
+    unit: count
+    promql: |
+      sum(pg_backend_wait_backends{namespace="{namespace}",pod=~"{pod}",wait_event_type="IO"})
+  pg_blocked_backends:
+    name: Backends blocked by another backend's lock
+    unit: count
+    promql: |
+      sum(pg_blocked_backends{namespace="{namespace}",pod=~"{pod}"})
+  pg_longest_query_seconds:
+    name: Longest running active query
+    unit: seconds
+    promql: |
+      max(pg_longest_query_seconds{namespace="{namespace}",pod=~"{pod}"})
+  pg_max_tx_duration:
+    name: Longest open transaction
+    unit: seconds
+    promql: |
+      max(pg_stat_activity_max_tx_duration{namespace="{namespace}",pod=~"{pod}"})
+  pg_deadlocks_rate:
+    name: Deadlocks in window
+    unit: count
+    promql: |
+      sum(increase(pg_stat_database_deadlocks{namespace="{namespace}",pod=~"{pod}"}[{window}]))
+  pg_locks_by_mode:
+    name: Held/requested locks by mode
+    unit: count
+    promql: |
+      sum by (mode) (pg_locks_count{namespace="{namespace}",pod=~"{pod}"})
+  pg_xact_commit_rate:
+    name: Committed transactions per second
+    unit: tps
+    promql: |
+      sum(rate(pg_stat_database_xact_commit{namespace="{namespace}",pod=~"{pod}"}[{window}]))

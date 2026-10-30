@@ -1,0 +1,37 @@
+# 네임스페이스 ngds (Pod Security restricted). 수집기 주소는 ngds-monitoring 차트의 Service
+
+postgres:
+  image: postgres:16
+  user: postgres
+  password: postgres
+  database: app
+  # PVC for PGDATA (empty storageClass = cluster default). Kept small so the disk fault fills it fast.
+  storage: 1Gi
+  storageClass: ""
+  # node filesystem (node-exporter mountpoint) that holds the PVC; "/" for local-path style storage
+  nodeMountpoint: /
+  # small limits so faults are easy to inject (scripts/faults/*.sh patch these)
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 384Mi}
+  exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 200m, memory: 128Mi}
+
+neo4j:
+  image: neo4j:5.26-community
+  password: semantic-obs   # >= 8 chars
+  resources:
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+mcp:
+  image: ghcr.io/sh1220/ngds-team08-mcp:latest   # CI(deploy.yml)/Makefile이 커밋 태그로 덮어쓴다
+  port: 8000
+  prometheusUrl: http://prometheus.ngds-monitoring:9090
+  lokiUrl: http://loki.ngds-monitoring:3100
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}

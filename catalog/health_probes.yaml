@@ -1,0 +1,44 @@
+# Fixed probe set used only by check_health (STEP 1).
+# The thresholds here only decide "where to look first" (ok|warn|anomaly).
+# Actual judgement (spikes, trends) is done by the AI from the raw series in STEP 3.
+# Metric probes take the worst series value; log probes take the matching line count within the window.
+probes:
+  # node
+  - {id: node_fs_space, layer: node, title: Data filesystem free space, metric: node_fs_avail_ratio,
+     threshold: {op: "<", warn: 0.2, anomaly: 0.05}, enters_node: node_fs_bytes_low}
+  - {id: node_fs_inodes, layer: node, title: Data filesystem free inodes, metric: node_fs_inodes_free_ratio,
+     threshold: {op: "<", warn: 0.2, anomaly: 0.05}, enters_node: node_fs_inodes_low}
+
+  # kubernetes
+  - {id: k8s_restarts, layer: kubernetes, title: Postgres container restarts, metric: pod_restarts,
+     threshold: {op: ">", warn: 0.1, anomaly: 0.9}, enters_node: k8s_pod_restart}
+  - {id: k8s_oomkilled, layer: kubernetes, title: Last termination OOMKilled, metric: pod_last_terminated_oom,
+     threshold: {op: ">", warn: 0.5, anomaly: 0.5}, enters_node: k8s_oomkilled}
+  - {id: k8s_not_ready, layer: kubernetes, title: Postgres pod not ready, metric: pod_not_ready,
+     threshold: {op: ">", warn: 0.5, anomaly: 0.5}, enters_node: k8s_pod_restart}
+  - {id: k8s_pvc_space, layer: kubernetes, title: PVC free space, metric: pvc_avail_ratio,
+     threshold: {op: "<", warn: 0.2, anomaly: 0.05}, enters_node: node_fs_bytes_low}
+
+  # container
+  - {id: ctr_memory, layer: container, title: Memory near limit (peak), metric: ctr_mem_limit_ratio_peak,
+     threshold: {op: ">", warn: 0.8, anomaly: 0.9}, enters_node: ctr_mem_near_limit}
+  - {id: ctr_cpu_throttle, layer: container, title: CPU CFS throttling, metric: ctr_cpu_throttle_ratio,
+     threshold: {op: ">", warn: 0.1, anomaly: 0.25}, enters_node: ctr_cpu_throttling}
+
+  # application
+  - {id: app_up, layer: application, title: Postgres up, metric: pg_up,
+     threshold: {op: "<", warn: 1, anomaly: 1}, enters_node: app_conn_errors}
+  - {id: app_active, layer: application, title: Active backends piling up, metric: pg_active_backends,
+     threshold: {op: ">", warn: 5, anomaly: 10}, enters_node: app_backends_piling}
+  - {id: app_latency, layer: application, title: Longest running query, metric: pg_longest_query_seconds,
+     threshold: {op: ">", warn: 2, anomaly: 10}, enters_node: app_query_latency}
+  - {id: app_blocked, layer: application, title: Blocked backends, metric: pg_blocked_backends,
+     threshold: {op: ">", warn: 0.5, anomaly: 2}, enters_node: app_lock_contention}
+  - {id: app_deadlocks, layer: application, title: Deadlocks, metric: pg_deadlocks_rate,
+     threshold: {op: ">", warn: 0.5, anomaly: 2}, enters_node: app_deadlocks}
+  - {id: app_log_crash, layer: application, title: Crash / restart log lines, log: pg_server_crash,
+     threshold: {op: ">", warn: 0.5, anomaly: 0.5}, enters_node: app_conn_errors}
+  - {id: app_log_no_space, layer: application, title: Write failure log lines, log: pg_no_space,
+     threshold: {op: ">", warn: 0.5, anomaly: 2}, enters_node: app_write_errors}
+  - {id: app_log_lock_wait, layer: application, title: Lock wait log lines, log: pg_lock_wait,
+     threshold: {op: ">", warn: 0.5, anomaly: 5}, enters_node: app_lock_contention}

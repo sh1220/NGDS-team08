@@ -1,3 +1,5 @@
-kubeconfig-*.yaml
-__pycache__/
 .venv/
+__pycache__/
+*.pyc
+.env
+kubeconfig-*.yaml

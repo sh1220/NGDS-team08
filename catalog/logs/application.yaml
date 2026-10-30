@@ -1,0 +1,32 @@
+layer: application
+queries:
+  pg_conn_terminated:
+    name: Postgres terminating connections
+    logql: '{namespace="{namespace}",pod=~"{pod}",container="postgres"} |= "terminating connection"'
+  pg_server_crash:
+    name: Postgres crash / crash recovery
+    logql: '{namespace="{namespace}",pod=~"{pod}",container="postgres"} |~ "was terminated by signal|terminating any other active server processes|was interrupted|not properly shut down|automatic recovery in progress"'
+  pg_client_conn_lost:
+    name: Clients losing the server connection (any pod in namespace)
+    logql: '{namespace="{namespace}"} |~ "server closed the connection|connection to server .* failed|terminating connection"'
+  pg_no_space:
+    name: Postgres write failures (disk/inode)
+    logql: '{namespace="{namespace}",pod=~"{pod}",container="postgres"} |~ "No space left on device|could not write|could not extend|could not create"'
+  pg_checkpoint:
+    name: Postgres checkpoint log lines
+    logql: '{namespace="{namespace}",pod=~"{pod}",container="postgres"} |~ "checkpoint"'
+  pg_checkpoint_warning:
+    name: Checkpoints occurring too frequently
+    logql: '{namespace="{namespace}",pod=~"{pod}",container="postgres"} |= "checkpoints are occurring too frequently"'
+  pg_deadlock:
+    name: Postgres deadlock detected
+    logql: '{namespace="{namespace}",pod=~"{pod}",container="postgres"} |= "deadlock detected"'
+  pg_lock_wait:
+    name: Postgres lock waits (log_lock_waits)
+    logql: '{namespace="{namespace}",pod=~"{pod}",container="postgres"} |= "still waiting for"'
+  pg_slow_query:
+    name: Slow statements (log_min_duration_statement)
+    logql: '{namespace="{namespace}",pod=~"{pod}",container="postgres"} |= "duration:"'
+  pg_errors:
+    name: Postgres ERROR/FATAL/PANIC lines
+    logql: '{namespace="{namespace}",pod=~"{pod}",container="postgres"} |~ "ERROR|FATAL|PANIC"'

@@ -10,7 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - run: python3 -m py_compile app/*.py
+      - run: python3 -m py_compile src/*.py scripts/seed_kg.py
+      - run: bash -n scripts/faults/*.sh
       - uses: azure/setup-helm@v4
-      - run: helm lint charts/chabunsi && helm template chabunsi charts/chabunsi --set serviceMonitor.enabled=true >/dev/null
-      - run: docker build -t chabunsi:ci .
+      - run: |
+          helm lint charts/ngds charts/ngds-monitoring
+          helm template ngds charts/ngds -n ngds >/dev/null
+          helm template ngds-monitoring charts/ngds-monitoring -n ngds-monitoring >/dev/null
+      - run: docker build -t ngds-team08-mcp:ci .
