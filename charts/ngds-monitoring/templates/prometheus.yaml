@@ -3,12 +3,14 @@ global:
   scrape_interval: {{ .Values.prometheus.scrapeInterval }}
   evaluation_interval: {{ .Values.prometheus.scrapeInterval }}
 scrape_configs:
-  # node-exporter, kube-state-metrics (이 네임스페이스), postgres_exporter (앱 네임스페이스) — annotation 붙은 파드
-  - job_name: pods
-    honor_labels: true
+  # annotation 붙은 파드. 수집기 네임스페이스(node-exporter, kube-state-metrics)는 메트릭 안의 namespace/pod 라벨을 믿는다(honor_labels).
+  # 앱 네임스페이스(postgres_exporter)는 팀원이 파드를 만들 수 있으므로 라벨을 덮어써 다른 대상인 척 못 하게 한다.
+{{- range $ns, $honor := dict .Release.Namespace true .Values.targetNamespace false }}
+  - job_name: pods-{{ $ns }}
+    honor_labels: {{ $honor }}
     kubernetes_sd_configs:
       - role: pod
-        namespaces: {names: [{{ .Release.Namespace }}, {{ .Values.targetNamespace }}]}
+        namespaces: {names: [{{ $ns }}]}
     relabel_configs:
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
@@ -27,9 +29,11 @@ scrape_configs:
         target_label: pod
       - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
         target_label: job
+{{- end }}
   # kubelet (PVC volume stats) and cAdvisor (container layer): 노드 kubelet(:10250)에 직접 붙는다.
   # API 서버 프록시(nodes/proxy)는 kubelet exec까지 열리는 넓은 권한이라 쓰지 않는다 → nodes/metrics만 필요.
-  # kubelet 서빙 인증서는 노드별 자체 서명이라 검증을 끈다(클러스터 내부 경로).
+  # kubelet 서빙 인증서는 노드별 자체 서명이라 검증을 끈다(클러스터 내부 경로). 보내는 토큰은 조회 전용(nodes/metrics, 파드 목록).
+  # ponytail: 검증 생략 — kubelet serverTLSBootstrap(클러스터 CA 서명)으로 바꾸면 ca_file로 검증 가능 (홈랩 ④에서)
 {{- range $job, $path := dict "kubelet" "metrics" "cadvisor" "metrics/cadvisor" }}
   - job_name: {{ $job }}
     scheme: https

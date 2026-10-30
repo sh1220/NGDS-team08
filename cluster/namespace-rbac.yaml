@@ -61,7 +61,8 @@ subjects:
   - {kind: Group, name: ngds-devs, apiGroup: rbac.authorization.k8s.io}
 roleRef: {kind: Role, name: ngds-dev, apiGroup: rbac.authorization.k8s.io}
 ---
-# 수집기 네임스페이스는 조회만 (make pf 로 Prometheus·Loki에 붙는 port-forward 포함, exec·생성 없음)
+# 수집기 네임스페이스는 조회만. port-forward는 주지 않는다: hostNetwork 파드(node-exporter)로 포워딩하면 노드의 localhost 포트에 닿는다.
+# 대신 Prometheus·Loki Service에만 API 서버 프록시(services/proxy)를 연다 → make pf 의 kubectl proxy 경로
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -72,8 +73,9 @@ rules:
     resources: [pods, pods/log, services, endpoints, events, configmaps, deployments, daemonsets]
     verbs: [get, list, watch]
   - apiGroups: [""]
-    resources: [pods/portforward]
-    verbs: [create]
+    resources: [services/proxy]
+    resourceNames: ["prometheus:9090", "loki:3100"]  # 프록시 경로의 <서비스>:<포트> 그대로 매칭된다
+    verbs: [get, create]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
