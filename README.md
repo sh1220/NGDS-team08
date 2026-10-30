@@ -13,10 +13,12 @@ MAPE-K 관점에서 Knowledge는 그래프로 외부화하고, Analyze는 LLM과
 | 네임스페이스 | Pod Security | 내용 | 배포 주체 | 팀원 권한 |
 |---|---|---|---|---|
 | `ngds` | restricted | postgres(+exporter 사이드카), neo4j, mcp — `charts/ngds` | main 머지 → `deploy.yml` → 앱 러너(LXC 112, 라벨 `ngds`) | 배포·exec·port-forward·부하 파드 생성 |
-| `ngds-monitoring` | privileged | Prometheus, Loki, promtail, node-exporter, kube-state-metrics — `charts/ngds-monitoring` | 홈랩 인프라 레포 helmfile(관리자), 이 레포 커밋 SHA로 고정 | 조회·로그, Prometheus·Loki Service 프록시만 (port-forward 없음) |
+| `ngds-monitoring` | privileged | Prometheus, Loki, promtail, node-exporter, kube-state-metrics — `charts/ngds-monitoring` | main 머지 → `monitoring.yml` → **관리자 승인** 후 앱 러너 | 조회·로그, Prometheus·Loki Service 프록시 GET만 (port-forward 없음) |
 
 - **두 네임스페이스로 나눈 이유:** 수집기는 hostPath, hostNetwork, ClusterRole이 필요하다. 그 네임스페이스에 파드를 만들 수 있으면 노드 root를 잡을 수 있다. 그래서 팀원과 앱 러너는 restricted인 `ngds`에서만 파드를 만든다.
-- **`charts/ngds-monitoring`을 바꾸려면:** 이 레포에서 PR을 머지한 뒤, 관리자가 인프라 레포의 고정 SHA를 올려야 반영된다.
+- **`charts/ngds-monitoring`을 바꾸려면:** 이 레포에서 PR을 머지하면 `monitoring.yml`이 GitHub Environment `monitoring`에서 관리자 승인을 기다린다. 승인하면 배포된다.
+  - 배포용 kubeconfig(그룹 `ngds-monitoring-ci`)는 러너 디스크가 아니라 Environment secret에만 있다. 이 secret은 main 브랜치 job에만 전달된다. 그래서 브랜치에 워크플로를 push해도 privileged 권한을 얻을 수 없다.
+  - ClusterRole은 차트에 넣지 않는다. 관리자가 `make cluster-init`으로 만든다.
 - **MCP의 수집기 주소:** `prometheus.ngds-monitoring:9090`, `loki.ngds-monitoring:3100`.
 - **Prometheus가 kubelet/cAdvisor를 긁는 방법:** API 서버 프록시(`nodes/proxy`, kubelet exec까지 열리는 권한)는 쓰지 않는다. 노드 `:10250`에 직접 붙고 `nodes/metrics` 권한만 쓴다.
 - **kube-state-metrics 권한:** 수집하는 리소스만 읽는다(Secret 제외).
@@ -28,6 +30,7 @@ MAPE-K 관점에서 Knowledge는 그래프로 외부화하고, Analyze는 LLM과
 |---|---|---|---|
 | `ci.yml` | PR → main | GitHub 호스팅 | py_compile, `bash -n`, 두 차트 lint/template, docker build |
 | `deploy.yml` | main push(`src/`, `catalog/`, `charts/ngds/`, `Dockerfile`, 의존성), 수동 | 호스팅(빌드·GHCR push) → 앱 러너(배포) | `helm upgrade --install ngds charts/ngds`, 태그 = 커밋 7자리 |
+| `monitoring.yml` | main push(`charts/ngds-monitoring/`), 수동 | 앱 러너 + Environment `monitoring`(main만, 관리자 승인) | `helm upgrade --install ngds-monitoring`. kubeconfig는 job 동안만 임시 파일 |
 
 배포는 `helm upgrade`로 차트 기본값을 다시 적용한다. 그래서 장애 주입으로 바꾼 limit 같은 값은 배포할 때마다 원복된다.
 
@@ -41,10 +44,10 @@ MAPE-K 관점에서 Knowledge는 그래프로 외부화하고, Analyze는 LLM과
 ```bash
 make cluster-init                                  # 네임스페이스 2개·권한 (재적용 가능)
 cluster/issue-kubeconfig.sh <팀원이름> [API 주소]   # 팀원 kubeconfig (그룹 ngds-devs, 90일)
-cluster/runner-setup.sh                            # 앱 러너 등록 (그룹 ngds-ci, 90일마다 재실행해 kubeconfig 갱신)
+cluster/runner-setup.sh                            # 앱 러너 등록 + Environment monitoring·secret (90일마다 재실행해 kubeconfig 갱신)
 ```
-- 프로젝트를 끝낼 때: 인프라 레포에서 `ngds-monitoring` 릴리스를 제거한 뒤 `kubectl delete ns ngds ngds-monitoring`.
-- **경계 규칙:** 앱 러너와 팀원은 `ngds` 안의 것만 설치한다. 클러스터 전역 리소스(ClusterRole, CRD 등)나 privileged 워크로드는 인프라 레포의 helmfile을 거친다(권한상으로도 막혀 있다).
+- 프로젝트를 끝낼 때: `helm uninstall ngds-monitoring -n ngds-monitoring` 후 `kubectl delete ns ngds ngds-monitoring`, ClusterRole `ngds-prometheus`·`ngds-kube-state-metrics` 삭제.
+- **경계 규칙:** 앱 러너와 팀원은 `ngds` 안의 것만 직접 설치한다. privileged인 `ngds-monitoring`은 관리자 승인을 거친 `monitoring.yml`만 배포한다. 클러스터 전역 리소스(ClusterRole, CRD 등)는 관리자만 만든다(권한상으로도 막혀 있다).
 
 ## 동작 흐름
 

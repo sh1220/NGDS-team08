@@ -1,5 +1,5 @@
 # 현재 kubeconfig context의 클러스터에 설치한다 (팀원은 관리자에게 받은 kubeconfig-<이름>.yaml).
-# 앱은 ngds(restricted), 수집기(charts/ngds-monitoring)는 홈랩 인프라 레포가 ngds-monitoring에 배포한다.
+# 앱은 ngds(restricted), 수집기(charts/ngds-monitoring)는 monitoring.yml이 관리자 승인 후 배포한다.
 NS        ?= ngds
 MON_NS    ?= ngds-monitoring
 RELEASE   ?= ngds

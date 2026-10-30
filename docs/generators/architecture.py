@@ -29,19 +29,17 @@ R,L,T,B=(1,.5),(0,.5),(.5,0),(.5,1)
 BLUE,RED,GH,ORG,GRN,PUR,GRY="#326CE5","#DD344C","#2088FF","#E57000","#1E8E3E","#8C4FFF","#879196"
 
 # ---------- 외부: GitHub ----------
-grp("GitHub (인터넷)",320,20,1480,220,GRY,"#5A6C72",dashed=1)
+grp("GitHub (인터넷)",320,20,1100,220,GRY,"#5A6C72",dashed=1)
 dev=users("팀원\nkubeconfig 그룹 ngds-devs",150,150,top=True)
 repo=logo("NGDS-team08 (public)\n앱 코드 · 차트 2개",450,150,"github","181717",top=True)
 act=logo("GitHub Actions (호스팅)\nci.yml: lint · build\ndeploy.yml: 이미지 빌드",800,150,"githubactions",GH[1:],top=True)
 ghcr=logo("GHCR (public)\nngds-team08-mcp:커밋7자리",1150,150,"docker","2496ED",top=True)
-infra=logo("homelab-infra (private)\nhelmfile: ngds-monitoring\n@ NGDS 커밋 SHA 고정",1560,150,"github","181717",top=True)
-adm=logo("관리자",1930,150,"apple","000000",top=True)
+adm=logo("관리자\nEnvironment 승인",1560,150,"apple","000000",top=True)
 
 # ---------- 홈랩 ----------
 grp("Home Lab  ·  Proxmox VE 클러스터 (미니 PC 2대)",320,290,1940,960,"#00A4A6","#147EBA",dashed=1,align="right")
-grp("Proxmox LXC",350,340,250,880,PUR,PUR)
-appr=logo("앱 러너 LXC 112\n라벨 ngds\n권한: ngds-ci Role",475,640,"githubactions",GH[1:])
-infr=logo("인프라 러너 LXC 111\n클러스터 관리자\nterraform · helmfile",475,1000,"githubactions",GH[1:])
+grp("Proxmox LXC",350,340,250,460,PUR,PUR)
+appr=logo("앱 러너 LXC 112\n라벨 ngds · 디스크엔 ngds-ci만\n수집기 권한은 승인 시 secret",475,640,"githubactions",GH[1:])
 
 grp("Kubernetes  ·  kubeadm, VM 3대 (k8s-cp · k8s-w1 · k8s-w2)",660,340,1580,880,BLUE,BLUE)
 gn=grp("ns ngds  ·  Pod Security restricted\n팀원: 배포·exec·부하 파드 / 앱 러너: 배포만",690,380,740,560,BLUE,BLUE)
@@ -52,7 +50,7 @@ neo=logo("Neo4j (StatefulSet)\nKG: 증상 → 원인\nemptyDir, make seed",810,7
 pvc=aws("PVC 1Gi (postgres 데이터)\nCSI가 VM 디스크로 붙임",1060,780,"elastic_block_store",GRN)
 load=logo("부하 파드 (pgbench)\nmake fault-*",1310,780,"gnubash","4EAA25")
 
-gm=grp("ns ngds-monitoring  ·  privileged\n배포: 관리자(helmfile) / 팀원: 조회만",1460,380,750,560,RED,RED)
+gm=grp("ns ngds-monitoring  ·  privileged\n배포: monitoring.yml(관리자 승인) / 팀원: 조회만",1460,380,750,560,RED,RED)
 prom=logo("Prometheus\nscrape 15s · 보존 6h\nClusterRole 조회 전용",1590,500,"prometheus","E6522C")
 ksm=logo("kube-state-metrics\n재시작 · OOMKilled",1840,500,"kubernetes","326CE5")
 nexp=logo("node-exporter (DS)\nhostNetwork :9100\nhostPath /proc /sys /",2090,500,"prometheus","E6522C")
@@ -76,10 +74,8 @@ e(act,appr,"④ deploy job\n(self-hosted · ngds)",GH,ex=B,en=L,pts=[(800,250),(
 e(appr,gn,"⑤ helm\nupgrade",GH,ex=R,en=(0,.5),lx=-0.62)
 e(ghcr,gn,"⑥ 이미지 pull",GH,dashed=1,ex=B,en=(.62,0),lx=0.45)
 # ---------- 관리자 흐름 (보라) ----------
-e(adm,infra,"PR · merge\n(SHA 올리기)",PUR,ex=L,en=R)
-e(repo,infra,"차트 원본 (커밋 SHA 고정)",GRY,dashed=1,ex=B,en=B,pts=[(450,228),(1560,228)])
-e(infra,infr,"⑦ apply.yml",PUR,ex=(.75,1),en=R,pts=[(1574,272),(625,272),(625,1028)],lx=0.55)
-e(infr,gm,"⑧ helmfile apply\n(관리자 권한)",PUR,ex=(1,.8),en=(.2,1),pts=[(645,1045),(645,965),(1610,965)],lx=0.1)
+e(adm,act,"⑦ 승인\n(Environment monitoring)",PUR,ex=B,en=(.8,1),pts=[(1560,212),(822,212)],lx=0.25)
+e(appr,gm,"⑧ helm upgrade ngds-monitoring\n(승인 후 Environment secret)",PUR,ex=(1,.85),en=(.2,1),pts=[(630,688),(630,965),(1610,965)],lx=0.1)
 
 # ---------- 데이터 흐름 ----------
 e(prom,pgx,"scrape",ORG,ex=L,en=R)
@@ -96,13 +92,13 @@ e(load,pg,"부하 · 락 경합",GRY,dashed=1,ex=(0,.3),en=(1,.75),pts=[(1240,79
 
 text("""<b>흐름 읽는 법</b><br>
 <font color="#2088FF"><b>파랑 ①~⑥ 앱 배포</b></font>: 팀원 PR → 머지 → 호스팅 러너가 이미지 빌드·GHCR push → 홈랩 앱 러너가 <code>charts/ngds</code>를 ns ngds에 helm upgrade<br>
-<font color="#8C4FFF"><b>보라 ⑦~⑧ 수집기 배포</b></font>: 관리자가 homelab-infra에서 NGDS 커밋 SHA를 올려 머지 → 인프라 러너가 <code>charts/ngds-monitoring</code>을 helmfile로 설치<br>
+<font color="#8C4FFF"><b>보라 ⑦~⑧ 수집기 배포</b></font>: <code>charts/ngds-monitoring</code> 변경 머지 → monitoring.yml이 관리자 승인 대기 → 승인되면 앱 러너가 Environment secret(main 전용)으로 설치<br>
 <font color="#E57000"><b>주황 수집</b></font>: Prometheus가 exporter·kubelet을 긁고, promtail이 노드의 ngds 파드 로그를 Loki로 보낸다<br>
 <font color="#1E8E3E"><b>초록 분석</b></font>: LLM → MCP → check_health(Prometheus) → get_diagnosis(Neo4j KG) → query_promql/logql로 근거 확인""",340,1290,1000,140)
 text("""<b>왜 네임스페이스가 둘인가</b><br>
 수집기는 hostPath·hostNetwork·ClusterRole이 필요하다 → 거기에 파드를 만들 수 있으면 노드 root.<br>
-그래서 팀원·앱 러너는 restricted인 <b>ngds</b>에서만 파드를 만들고, privileged인 <b>ngds-monitoring</b>은 관리자 파이프라인만 배포한다.<br>
-팀원의 수집기 접근: Prometheus·Loki Service 프록시 <b>GET</b>만 (port-forward·exec 없음). 앱 러너는 앱 레포 쓰기 권한자가 워크플로로 돌릴 수 있어 privileged 권한을 주지 않는다.""",1360,1290,900,140)
+그래서 팀원·앱 러너는 restricted인 <b>ngds</b>에서만 파드를 만들고, privileged인 <b>ngds-monitoring</b>은 관리자 승인을 거친 배포만 들어간다.<br>
+팀원의 수집기 접근: Prometheus·Loki Service 프록시 <b>GET</b>만 (port-forward·exec 없음). 앱 러너 디스크에는 privileged 권한을 두지 않는다(브랜치 워크플로로 꺼낼 수 있어서) → 승인된 main job에만 secret으로 전달.""",1360,1290,900,140)
 
 diagram='<diagram name="NGDS 아키텍처" id="ngds"><mxGraphModel dx="2300" dy="1550" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2300" pageHeight="1460" math="0" shadow="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/>'+"".join(cells)+'</root></mxGraphModel></diagram>'
 open('docs/architecture.drawio','w').write('<mxfile host="drawio">'+diagram+'</mxfile>')
