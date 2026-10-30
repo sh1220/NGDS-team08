@@ -1,0 +1,29 @@
+# 수집 대상 앱 네임스페이스 (postgres_exporter scrape, promtail 로그 수집)
+targetNamespace: ngds
+
+prometheus:
+  image: prom/prometheus:v3.5.0
+  retention: 6h
+  scrapeInterval: 15s
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+loki:
+  image: grafana/loki:3.5.0
+  retention: 24h
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+promtail:
+  image: grafana/promtail:3.5.0
+
+# 홈랩에 kube-prometheus-stack(④)이 올라오면 끈다 (hostNetwork :9100 충돌)
+nodeExporter:
+  enabled: true
+  image: prom/node-exporter:v1.9.1
+
+kubeStateMetrics:
+  enabled: true
+  image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.15.0

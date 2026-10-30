@@ -1,5 +1,5 @@
 # postgres_exporter (sidecar). pg_blocked_*, pg_backend_wait_*, pg_longest_query_* come from
-# custom queries in the exporter ConfigMap (helm/semantic-obs/templates/postgres.yaml).
+# custom queries in the exporter ConfigMap (charts/ngds/templates/postgres.yaml).
 layer: application
 metrics:
   pg_up:

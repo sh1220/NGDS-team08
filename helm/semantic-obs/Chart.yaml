@@ -1,8 +1,0 @@
-apiVersion: v2
-name: semantic-obs
-description: Semantic observability RCA prototype — postgres + Prometheus/Loki/promtail + Neo4j KG + MCP server
-type: application
-version: 0.1.0
-appVersion: "0.1.0"
-# No subchart dependencies: the observability stack is plain single-replica manifests
-# (templates/observability-*.yaml) — simpler and lighter than the community charts.

@@ -52,8 +52,12 @@ kind: ClusterRole
 metadata:
   name: {{ .Release.Name }}-kube-state-metrics
 rules:
-  - apiGroups: ["*"]
-    resources: ["*"]
+  # --resources 에 넣은 것만 (기존 */* 는 Secret까지 읽을 수 있었다)
+  - apiGroups: [""]
+    resources: [pods, nodes]
+    verbs: [list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
     verbs: [list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

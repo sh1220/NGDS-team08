@@ -1,7 +1,7 @@
 #!/bin/bash
-# 앱 러너 LXC 112(192.168.45.239)를 이 레포의 self-hosted runner(라벨 chabunsi)로 만든다. 관리자가 맥에서 실행, 재실행 가능.
+# 앱 러너 LXC 112(192.168.45.239)를 이 레포의 self-hosted runner(라벨 ngds)로 만든다. 관리자가 맥에서 실행, 재실행 가능.
 #   전제: 홈랩 tunnels.sh(SOCKS 11080), 관리자 kubeconfig(KUBECONFIG), gh 로그인
-# 러너가 받는 권한: chabunsi 네임스페이스의 chabunsi-ci Role(배포 리소스만, exec 없음) 하나뿐 (Proxmox·노드·클러스터 관리자 권한 없음)
+# 러너가 받는 권한: ngds 네임스페이스의 ngds-ci Role(배포 리소스만, exec 없음) 하나뿐 (Proxmox·노드·클러스터 관리자 권한 없음)
 # 한계: runner group/Environment(유료)로 워크플로를 제한하지 않았다 → 레포를 private, 협업자만으로 유지한다
 set -euo pipefail
 REPO=sh1220/NGDS-team08 HOST=192.168.45.239 KEY=~/.ssh/id_ed25519_homelab
@@ -28,7 +28,7 @@ X
 
 echo "== 네임스페이스 전용 kubeconfig"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-(cd "$T" && GROUP=chabunsi-ci "$OLDPWD/cluster/issue-kubeconfig.sh" ci-runner https://192.168.45.241:6443 >/dev/null)
+(cd "$T" && GROUP=ngds-ci "$OLDPWD/cluster/issue-kubeconfig.sh" ci-runner https://192.168.45.241:6443 >/dev/null)
 r "cat > ~runner/.kube/config && chown runner:runner ~runner/.kube/config && chmod 600 ~runner/.kube/config" < "$T/kubeconfig-ci-runner.yaml"
 
 echo "== runner $RUNNER 등록"
@@ -44,7 +44,7 @@ if [ ! -x ./config.sh ] || [ "\$(cat .version 2>/dev/null)" != "\$RUNNER" ]; the
 fi
 chown -R runner:runner \$D
 [ "\$REGISTERED" = yes ] || rm -f .runner .credentials .credentials_rsaparams
-[ -f .runner ] || runuser -u runner -- ./config.sh --unattended --replace --url https://github.com/\$REPO --token $TOKEN --name app-runner --labels chabunsi >/dev/null
+[ -f .runner ] || runuser -u runner -- ./config.sh --unattended --replace --url https://github.com/\$REPO --token $TOKEN --name app-runner --labels ngds >/dev/null
 [ -f .service ] || ./svc.sh install runner >/dev/null
 ./svc.sh stop >/dev/null 2>&1 || true; ./svc.sh start >/dev/null
 X

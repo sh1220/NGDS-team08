@@ -21,14 +21,16 @@ spec:
     metadata:
       labels: {{- include "so.labels" "mcp" | nindent 8 }}
     spec:
+      {{- include "so.podSecurity" 10001 | nindent 6 }}
       containers:
         - name: mcp
           image: {{ .Values.mcp.image }}
           imagePullPolicy: IfNotPresent
+          {{- include "so.containerSecurity" . | nindent 10 }}
           args: ["--transport", "http", "--host", "0.0.0.0", "--port", "{{ .Values.mcp.port }}"]
           env:
-            - {name: PROMETHEUS_URL, value: "http://prometheus:9090"}
-            - {name: LOKI_URL, value: "http://loki:3100"}
+            - {name: PROMETHEUS_URL, value: {{ .Values.mcp.prometheusUrl | quote }}}
+            - {name: LOKI_URL, value: {{ .Values.mcp.lokiUrl | quote }}}
             - {name: NEO4J_URI, value: "bolt://neo4j:7687"}
             - {name: NEO4J_USER, value: neo4j}
             - {name: NEO4J_PASSWORD, value: {{ .Values.neo4j.password | quote }}}

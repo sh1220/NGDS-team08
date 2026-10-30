@@ -62,10 +62,13 @@ spec:
         checksum/config: {{ .Values.postgres | toJson | sha256sum | trunc 12 }}
     spec:
       terminationGracePeriodSeconds: 10
+      # 공식 이미지의 postgres 유저(uid 999)로 바로 실행 (restricted는 root 시작 금지)
+      {{- include "so.podSecurity" 999 | nindent 6 }}
       containers:
         - name: postgres
           image: {{ .Values.postgres.image }}
           args: ["-c", "config_file=/etc/postgresql/postgresql.conf"]
+          {{- include "so.containerSecurity" . | nindent 10 }}
           env:
             - {name: POSTGRES_USER, value: {{ .Values.postgres.user | quote }}}
             - {name: POSTGRES_PASSWORD, value: {{ .Values.postgres.password | quote }}}
@@ -83,6 +86,7 @@ spec:
         - name: exporter
           image: {{ .Values.postgres.exporter.image }}
           args: ["--extend.query-path=/etc/exporter/queries.yaml"]
+          {{- include "so.containerSecurity" . | nindent 10 }}
           env:
             - name: DATA_SOURCE_NAME
               value: "postgresql://{{ .Values.postgres.user }}:{{ .Values.postgres.password }}@localhost:5432/{{ .Values.postgres.database }}?sslmode=disable"

@@ -1,4 +1,4 @@
-# Installed into an existing cluster, release namespace (Makefile NS, default semantic-obs).
+# 네임스페이스 ngds (Pod Security restricted). 수집기 주소는 ngds-monitoring 차트의 Service
 
 postgres:
   image: postgres:16
@@ -28,35 +28,10 @@ neo4j:
     limits: {cpu: "1", memory: 1Gi}
 
 mcp:
-  image: semantic-obs-mcp:dev   # Makefile overrides with $(IMAGE) (a registry the cluster can pull from)
+  image: ghcr.io/sh1220/ngds-team08-mcp:latest   # CI(deploy.yml)/Makefile이 커밋 태그로 덮어쓴다
   port: 8000
+  prometheusUrl: http://prometheus.ngds-monitoring:9090
+  lokiUrl: http://loki.ngds-monitoring:3100
   resources:
     requests: {cpu: 50m, memory: 128Mi}
     limits: {cpu: 500m, memory: 512Mi}
-
-prometheus:
-  image: prom/prometheus:v3.5.0
-  retention: 6h
-  scrapeInterval: 15s
-  resources:
-    requests: {cpu: 100m, memory: 256Mi}
-    limits: {cpu: "1", memory: 1Gi}
-
-loki:
-  image: grafana/loki:3.5.0
-  retention: 24h
-  resources:
-    requests: {cpu: 50m, memory: 128Mi}
-    limits: {cpu: 500m, memory: 512Mi}
-
-promtail:
-  image: grafana/promtail:3.5.0
-
-# turn off if the cluster already runs these (hostNetwork :9100 would conflict)
-nodeExporter:
-  enabled: true
-  image: prom/node-exporter:v1.9.1
-
-kubeStateMetrics:
-  enabled: true
-  image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.15.0

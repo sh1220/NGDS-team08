@@ -16,7 +16,7 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "semantic-obs")
 CATALOG_DIR = Path(os.getenv("CATALOG_DIR", ROOT / "catalog"))
 
 # Defaults substituted into catalog placeholders
-TARGET_NAMESPACE = os.getenv("TARGET_NAMESPACE", "semantic-obs")
+TARGET_NAMESPACE = os.getenv("TARGET_NAMESPACE", "ngds")
 TARGET_POD = os.getenv("TARGET_POD", "postgres-.*")
 TARGET_CONTAINER = os.getenv("TARGET_CONTAINER", "postgres")
 # node filesystem that holds the postgres PVC ('/' for local-path style storage)

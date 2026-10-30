@@ -1,28 +1,37 @@
-# 클러스터 관리자가 한 번만 적용한다: make cluster-init
-# 팀원(그룹 chabunsi-devs)은 이 네임스페이스 안에서만 배포·조회·삭제할 수 있다. 다른 네임스페이스·노드·클러스터 설정은 불가.
+# 클러스터 관리자가 적용한다: make cluster-init (재적용 가능)
+#   ngds            앱(postgres, neo4j, mcp). Pod Security restricted. 팀원(ngds-devs)이 배포·exec·장애 주입, 앱 러너(ngds-ci)가 CI 배포
+#   ngds-monitoring 수집기(Prometheus, Loki, promtail, node-exporter, kube-state-metrics). hostPath·hostNetwork가 필요해 privileged.
+#                   여기에 파드를 만들 수 있으면 노드 root와 같다 → 팀원·앱 러너는 조회·로그·port-forward만. 배포는 홈랩 인프라 레포 helmfile(관리자)
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: chabunsi
+  name: ngds
   labels:
     # 특권 파드·hostPath·root 실행을 거부한다(노드 탈취 방지). 차트의 파드는 restricted 기준을 맞춘다
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ngds-monitoring
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: chabunsi-dev
-  namespace: chabunsi
+  name: ngds-dev
+  namespace: ngds
 rules:
-  # 앱 배포 (helm upgrade --install / uninstall)
+  # 앱 배포 (helm upgrade --install / uninstall), 장애 주입(helm --reuse-values로 limit 변경)
   - apiGroups: ["apps"]
     resources: [deployments, statefulsets, replicasets]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [""]
     resources: [services, configmaps, persistentvolumeclaims, serviceaccounts]
     verbs: [get, list, watch, create, update, patch, delete]
-  # helm은 릴리스 기록을 이 네임스페이스의 Secret에 저장한다. 이미지 pull Secret도 여기
+  # helm은 릴리스 기록을 이 네임스페이스의 Secret에 저장한다
   - apiGroups: [""]
     resources: [secrets]
     verbs: [get, list, watch, create, update, patch, delete]
@@ -32,16 +41,13 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: [networkpolicies, ingresses]
     verbs: [get, list, watch, create, update, patch, delete]
-  - apiGroups: ["monitoring.coreos.com"]
-    resources: [servicemonitors]
-    verbs: [get, list, watch, create, update, patch, delete]
-  # 디버깅: 파드 조회·로그·exec·port-forward, 이벤트
-  - apiGroups: [""]
-    resources: [pods, pods/log, events, endpoints]
-    verbs: [get, list, watch]
+  # 디버깅·장애 주입: 부하 파드 생성(kubectl run), 로그·exec·port-forward, 이벤트
   - apiGroups: [""]
     resources: [pods]
-    verbs: [delete]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [""]
+    resources: [pods/log, events, endpoints]
+    verbs: [get, list, watch]
   - apiGroups: [""]
     resources: [pods/exec, pods/portforward]
     verbs: [create]
@@ -49,48 +55,58 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: chabunsi-devs
-  namespace: chabunsi
+  name: ngds-devs
+  namespace: ngds
 subjects:
-  - kind: Group
-    name: chabunsi-devs
-    apiGroup: rbac.authorization.k8s.io
-roleRef:
-  kind: Role
-  name: chabunsi-dev
-  apiGroup: rbac.authorization.k8s.io
+  - {kind: Group, name: ngds-devs, apiGroup: rbac.authorization.k8s.io}
+roleRef: {kind: Role, name: ngds-dev, apiGroup: rbac.authorization.k8s.io}
 ---
-# CI 러너(LXC 112) 전용: 차트가 만드는 리소스와 helm 릴리스 Secret만. exec·port-forward·삭제된 리소스 외 권한 없음.
-# 팀원 권한(chabunsi-devs)과 따로 회수할 수 있다: kubectl delete rolebinding -n chabunsi chabunsi-ci
+# 수집기 네임스페이스는 조회만 (make pf 로 Prometheus·Loki에 붙는 port-forward 포함, exec·생성 없음)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: chabunsi-ci
-  namespace: chabunsi
+  name: ngds-monitoring-view
+  namespace: ngds-monitoring
+rules:
+  - apiGroups: ["", "apps"]
+    resources: [pods, pods/log, services, endpoints, events, configmaps, deployments, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/portforward]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ngds-devs
+  namespace: ngds-monitoring
+subjects:
+  - {kind: Group, name: ngds-devs, apiGroup: rbac.authorization.k8s.io}
+roleRef: {kind: Role, name: ngds-monitoring-view, apiGroup: rbac.authorization.k8s.io}
+---
+# CI 러너(LXC 112) 전용: 차트가 만드는 리소스와 helm 릴리스 Secret만. exec·port-forward·파드 생성 없음.
+# 팀원 권한과 따로 회수할 수 있다: kubectl delete rolebinding -n ngds ngds-ci
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ngds-ci
+  namespace: ngds
 rules:
   - apiGroups: ["apps"]
-    resources: [deployments, replicasets]
+    resources: [deployments, statefulsets, replicasets]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [""]
     resources: [services, configmaps, secrets]
     verbs: [get, list, watch, create, update, patch, delete]
-  - apiGroups: ["monitoring.coreos.com"]
-    resources: [servicemonitors]
-    verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [""]
-    resources: [pods, events]
+    resources: [pods, events, persistentvolumeclaims]
     verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: chabunsi-ci
-  namespace: chabunsi
+  name: ngds-ci
+  namespace: ngds
 subjects:
-  - kind: Group
-    name: chabunsi-ci
-    apiGroup: rbac.authorization.k8s.io
-roleRef:
-  kind: Role
-  name: chabunsi-ci
-  apiGroup: rbac.authorization.k8s.io
+  - {kind: Group, name: ngds-ci, apiGroup: rbac.authorization.k8s.io}
+roleRef: {kind: Role, name: ngds-ci, apiGroup: rbac.authorization.k8s.io}

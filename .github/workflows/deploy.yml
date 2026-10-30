@@ -1,10 +1,11 @@
-# main 머지 → 이미지 빌드·GHCR push(GitHub 호스팅) → 홈랩 앱 러너(LXC 112, 라벨 chabunsi)가 helm 배포
-# 앱 러너는 chabunsi 네임스페이스 전용 kubeconfig만 가진다 (cluster/runner-setup.sh)
+# main 머지 → 이미지 빌드·GHCR push(GitHub 호스팅) → 홈랩 앱 러너(LXC 112, 라벨 ngds)가 charts/ngds를 helm 배포
+# 앱 러너는 ngds 네임스페이스 전용 kubeconfig만 가진다 (cluster/runner-setup.sh).
+# charts/ngds-monitoring은 여기서 배포하지 않는다 (privileged → 홈랩 인프라 레포 helmfile이 커밋 SHA로 고정해 배포)
 name: deploy
 on:
   push:
     branches: [main]
-    paths: ["app/**", "Dockerfile", "charts/**"]
+    paths: ["src/**", "catalog/**", "scripts/seed_kg.py", "pyproject.toml", "uv.lock", "Dockerfile", "charts/ngds/**"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -36,7 +37,7 @@ jobs:
   deploy:
     needs: build
     if: github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, chabunsi]
+    runs-on: [self-hosted, ngds]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -44,6 +45,6 @@ jobs:
         env:
           TAG: ${{ needs.build.outputs.tag }}
         run: |
-          helm upgrade --install chabunsi charts/chabunsi -n chabunsi --set image.tag=$TAG --wait --timeout 5m
-          kubectl -n chabunsi get pods -o wide
+          helm upgrade --install ngds charts/ngds -n ngds --set mcp.image=ghcr.io/sh1220/ngds-team08-mcp:$TAG --wait --timeout 10m
+          kubectl -n ngds get pods -o wide
           echo "## 배포 ✅ \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"

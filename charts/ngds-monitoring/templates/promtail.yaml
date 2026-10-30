@@ -8,14 +8,14 @@ positions:
 clients:
   - url: http://loki:3100/loki/api/v1/push
 scrape_configs:
-  # Tail this namespace's pod logs directly; labels come from the CRI log path
+  # Tail the app namespace's pod logs directly; labels come from the CRI log path
   # /var/log/pods/<namespace>_<pod>_<uid>/<container>/<n>.log
   - job_name: pods
     static_configs:
       - targets: [localhost]
         labels:
           job: pods
-          __path__: /var/log/pods/{{ .Release.Namespace }}_*/*/*.log
+          __path__: /var/log/pods/{{ .Values.targetNamespace }}_*/*/*.log
     pipeline_stages:
       - cri: {}
       - regex:

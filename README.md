@@ -1,9 +1,47 @@
-# Semantic Observability — RCA 프로토타입
+# NGDS-team08 — Semantic Observability RCA
 
-Kubernetes 위의 PostgreSQL 하나를 대상으로, node → kubernetes → container → application
-계층의 메트릭·로그를 보고 **Neo4j에 저장된 인과 지식 그래프(KG)를 Cypher로 탐색**해
-LLM이 장애 근본 원인을 찾도록 하는 MCP 서버.
-MAPE-K 관점에서 Knowledge는 그래프로 외부화하고, Analyze는 LLM + MCP가 맡는다.
+차세대 분산 시스템(NGDS, 차분시) 8팀 프로젝트.
+Kubernetes 위의 PostgreSQL 하나를 대상으로 삼아, node → kubernetes → container → application 계층의 메트릭과 로그를 본다.
+MCP 서버는 **Neo4j에 저장된 인과 지식 그래프(KG)를 Cypher로 탐색**하고, LLM은 이를 따라 장애의 근본 원인을 찾는다.
+MAPE-K 관점에서 Knowledge는 그래프로 외부화하고, Analyze는 LLM과 MCP가 맡는다.
+
+## 홈랩 배포 구조
+
+| 네임스페이스 | Pod Security | 내용 | 배포 주체 | 팀원 권한 |
+|---|---|---|---|---|
+| `ngds` | restricted | postgres(+exporter 사이드카), neo4j, mcp — `charts/ngds` | main 머지 → `deploy.yml` → 앱 러너(LXC 112, 라벨 `ngds`) | 배포·exec·port-forward·부하 파드 생성 |
+| `ngds-monitoring` | privileged | Prometheus, Loki, promtail, node-exporter, kube-state-metrics — `charts/ngds-monitoring` | 홈랩 인프라 레포 helmfile(관리자), 이 레포 커밋 SHA로 고정 | 조회·로그·port-forward만 |
+
+- **두 네임스페이스로 나눈 이유:** 수집기는 hostPath, hostNetwork, ClusterRole이 필요하다. 그 네임스페이스에 파드를 만들 수 있으면 노드 root를 잡을 수 있다. 그래서 팀원과 앱 러너는 restricted인 `ngds`에서만 파드를 만든다.
+- **`charts/ngds-monitoring`을 바꾸려면:** 이 레포에서 PR을 머지한 뒤, 관리자가 인프라 레포의 고정 SHA를 올려야 반영된다.
+- **MCP의 수집기 주소:** `prometheus.ngds-monitoring:9090`, `loki.ngds-monitoring:3100`.
+- **Prometheus가 kubelet/cAdvisor를 긁는 방법:** API 서버 프록시(`nodes/proxy`, kubelet exec까지 열리는 권한)는 쓰지 않는다. 노드 `:10250`에 직접 붙고 `nodes/metrics` 권한만 쓴다.
+- **kube-state-metrics 권한:** 수집하는 리소스만 읽는다(Secret 제외).
+- **PVC:** 기본 StorageClass(`proxmox-zfs`, Proxmox CSI)로 만들어진다. 크기가 정해진 실제 디스크라 디스크 장애 시나리오를 그대로 돌릴 수 있다.
+- **이미지:** `ghcr.io/sh1220/ngds-team08-mcp`(public). 이미지에 코드가 들어가므로 비밀값을 넣지 않는다.
+
+### CI/CD
+| 워크플로 | 트리거 | 러너 | 내용 |
+|---|---|---|---|
+| `ci.yml` | PR → main | GitHub 호스팅 | py_compile, `bash -n`, 두 차트 lint/template, docker build |
+| `deploy.yml` | main push(`src/`, `catalog/`, `charts/ngds/`, `Dockerfile`, 의존성), 수동 | 호스팅(빌드·GHCR push) → 앱 러너(배포) | `helm upgrade --install ngds charts/ngds`, 태그 = 커밋 7자리 |
+
+배포는 `helm upgrade`로 차트 기본값을 다시 적용한다. 그래서 장애 주입으로 바꾼 limit 같은 값은 배포할 때마다 원복된다.
+
+### 팀원 시작하기
+1. 관리자에게 `kubeconfig-<이름>.yaml`을 받아 `export KUBECONFIG=...`로 지정한다. `ngds` 네임스페이스 전용이고 90일 동안 유효하다.
+2. 새 클러스터가 올라오면 한 번 `make seed`를 실행한다. KG를 적재하고 pgbench 테이블을 만든다. Neo4j는 emptyDir라서 neo4j 파드가 재시작될 때마다 다시 해야 한다.
+3. 다른 터미널에서 `make pf`를 실행한다. prometheus 9090, loki 3100, neo4j 7687/7474, mcp 8000이 열린다.
+4. 장애 주입: `make fault-*`, 원복: `make fault-clear`. 아래 표 참고.
+
+### 관리자
+```bash
+make cluster-init                                  # 네임스페이스 2개·권한 (재적용 가능)
+cluster/issue-kubeconfig.sh <팀원이름> [API 주소]   # 팀원 kubeconfig (그룹 ngds-devs, 90일)
+cluster/runner-setup.sh                            # 앱 러너 등록 (그룹 ngds-ci, 90일마다 재실행해 kubeconfig 갱신)
+```
+- 프로젝트를 끝낼 때: 인프라 레포에서 `ngds-monitoring` 릴리스를 제거한 뒤 `kubectl delete ns ngds ngds-monitoring`.
+- **경계 규칙:** 앱 러너와 팀원은 `ngds` 안의 것만 설치한다. 클러스터 전역 리소스(ClusterRole, CRD 등)나 privileged 워크로드는 인프라 레포의 helmfile을 거친다(권한상으로도 막혀 있다).
 
 ## 동작 흐름
 
@@ -26,42 +64,24 @@ STEP3 query_promql / query_logql ── KG가 가리킨 메트릭·로그만 원
 - **클러스터는 만들지 않는다.** 현재 kubeconfig context의 클러스터에 `helm install`만 한다.
 - **옵저버빌리티 스택은 서브차트 없이 평이한 매니페스트로 둔다.** 전부 단일 replica다.
 - **postgres_exporter는 사이드카다.** 그래서 앱 메트릭에 `pod=postgres-0` 라벨이 붙어 다른 계층과 같은 키로 조회된다.
-- **kubelet/cAdvisor는 API 서버 프록시로 scrape한다.** 매니지드 클러스터에서도 동작한다.
+- **kubelet/cAdvisor는 노드 :10250에 직접 붙어 scrape한다.** `nodes/metrics` 권한만 쓴다. API 서버 프록시(`nodes/proxy`)는 kubelet exec까지 열려서 쓰지 않는다.
 - **MCP tool은 전부 read-only다.**
 
-## 클러스터를 받으면 설치 전에 확인할 것
-
-아래 항목 중 하나라도 맞지 않으면 `helm install`이 실패하거나 파드가 뜨지 않는다.
-
-| # | 확인 | 명령 | 안 맞으면 생기는 일 → 대응 |
-|---|---|---|---|
-| 1 | 노드 CPU 아키텍처 | `kubectl get nodes -L kubernetes.io/arch` | 맥(arm64)에서 빌드한 MCP 이미지를 amd64 노드에서 실행하면 `CrashLoopBackOff`(exec format error)가 난다 → `docker buildx build --platform linux/amd64 -t $IMAGE --push .`로 빌드한다 |
-| 2 | 이미지 레지스트리 | 클러스터가 pull할 수 있는 레지스트리가 있는가 | mcp 파드가 `ImagePullBackOff` → 레지스트리에 push하고 `IMAGE=<registry>/...`로 배포한다. private 레지스트리면 pull secret이 필요한데, 현재 차트에는 그 설정이 없다 |
-| 3 | default StorageClass | `kubectl get sc` (`(default)` 표시) | postgres PVC가 `Pending`, 파드도 `Pending` → `--set postgres.storageClass=<이름>` |
-| 4 | 스토리지 종류 | StorageClass의 provisioner | local-path류(노드 디스크의 디렉터리)면 `fault-disk`가 안전장치로 실행을 거부하고, `pvc_*` 메트릭도 비어 있다. 디스크 시나리오에는 크기가 정해진 실제 볼륨(CSI)이 필요하다 |
-| 5 | 권한 | `kubectl auth can-i create clusterrole` | `yes`가 아니면 설치가 실패한다(Prometheus, kube-state-metrics가 ClusterRole을 쓴다) → 관리자 권한을 요청한다 |
-| 6 | Pod Security | `kubectl get ns --show-labels`, 이 namespace에 `pod-security.kubernetes.io/enforce` 라벨이 붙는지 / OpenShift인지 | restricted·baseline 강제 시 node-exporter(hostNetwork, hostPID, hostPath)와 promtail(hostPath)이 거부된다 → namespace를 privileged로 두거나 관리자와 협의한다 |
-| 7 | 기존 모니터링 | `kubectl get ds,deploy -A \| grep -E "node-exporter\|kube-state-metrics"` | 기존 node-exporter와 9100 포트가 충돌한다 → `--set nodeExporter.enabled=false` (kube-state-metrics도 `kubeStateMetrics.enabled=false`) |
-| 8 | 외부 이미지 pull | 노드가 Docker Hub / quay.io / registry.k8s.io에 접근 가능한가 | 폐쇄망이나 rate limit이면 서드파티 이미지가 `ImagePullBackOff` → 사내 미러로 `values.yaml`의 이미지 경로를 바꾼다 |
-| 9 | 컨테이너 로그 경로 | containerd / cri-o 런타임인가(`kubectl get nodes -o wide`의 CONTAINER-RUNTIME) | 로그가 `/var/log/pods`에 없으면 Loki가 비어 있다 |
-| 10 | 리소스 | namespace에 ResourceQuota/LimitRange가 있는가: `kubectl get quota,limitrange -n semantic-obs` | 요청 합계(메모리 약 1.3Gi)가 쿼터를 넘으면 파드 생성이 거부된다 |
-
-설치 후 확인:
-```bash
-make status                                   # 모든 파드 Running/Ready
-kubectl -n semantic-obs get pvc               # data-postgres-0 Bound
-make pf   # 다른 터미널에서:
-curl -s localhost:9090/api/v1/targets | grep -o '"health":"[a-z]*"' | sort | uniq -c   # 전부 up (5개 job)
-curl -s localhost:3100/loki/api/v1/label/pod/values                                    # postgres-0 포함
-```
-참고: Neo4j는 emptyDir라서 파드가 재시작되면 KG가 사라진다 → `make seed`를 다시 한다.
+## 다른 클러스터에 설치할 때
+홈랩에서는 이미 맞춰져 있다(amd64, GHCR public, 기본 StorageClass가 CSI, 네임스페이스와 권한은 `make cluster-init`).
+다른 클러스터에서는 다음을 확인한다.
+- 노드 아키텍처
+- 기본 StorageClass
+- ClusterRole 생성 권한(수집기 차트)
+- Pod Security: `ngds-monitoring`은 privileged여야 한다
+- 기존 node-exporter와의 9100 포트 충돌. 충돌하면 `nodeExporter.enabled=false`
 
 ## 사용법
 
 ```bash
-make image IMAGE=<registry>/semantic-obs-mcp:0.1.0   # 빌드 + push
-make up    IMAGE=<registry>/semantic-obs-mcp:0.1.0   # helm install + KG 적재 + pgbench 테이블 생성
-make pf                                              # (별도 터미널) prometheus 9090, loki 3100, neo4j 7687/7474, mcp 8000
+make image    # (직접 테스트할 때) amd64 빌드 + GHCR push. 평소에는 main 머지 시 CI가 한다
+make up       # helm upgrade --install ngds + KG 적재 + pgbench 테이블 생성
+make pf       # (별도 터미널) prometheus 9090, loki 3100, neo4j 7687/7474, mcp 8000
 ```
 MCP 클라이언트 연결:
 - HTTP(클러스터 안 서버): `http://localhost:8000/mcp`
@@ -125,17 +145,29 @@ MCP 클라이언트 연결:
 | `faults/oom.sh`, `cpu_throttle.sh`, `disk_pressure.sh`, `lock_contention.sh` | 장애 4종 주입 |
 | `faults/clear.sh` | 장애 원복 |
 
-### `helm/semantic-obs/`
+### `charts/ngds/` (앱, `ngds`)
 | 파일 | 용도 |
 |---|---|
 | `Chart.yaml`, `values.yaml` | 차트 정의. 이미지, 접속정보, 비밀번호, retention, 리소스 limit, PVC 크기 |
-| `templates/postgres.yaml` | postgres StatefulSet(PVC) + exporter 사이드카, Service, ConfigMap(로그 설정, exporter 커스텀 쿼리) |
+| `templates/postgres.yaml` | postgres StatefulSet(PVC, uid 999로 실행) + exporter 사이드카, Service, ConfigMap(로그 설정, exporter 커스텀 쿼리) |
 | `templates/neo4j.yaml` | Neo4j Community 단일 파드. KG는 `make seed`로 다시 적재하므로 emptyDir를 쓴다 |
 | `templates/mcp.yaml` | MCP 서버 Deployment + Service |
-| `templates/observability-prometheus.yaml` | Prometheus + RBAC. 파드 annotation 대상, kubelet, cAdvisor를 scrape |
-| `templates/observability-loki.yaml` | Loki single-binary, filesystem 스토리지 |
-| `templates/observability-promtail.yaml` | promtail DaemonSet. `/var/log/pods/<ns>_*`를 tail하고 경로에서 라벨을 뽑는다 |
-| `templates/observability-exporters.yaml` | node-exporter, kube-state-metrics (on/off 가능) |
+
+### `charts/ngds-monitoring/` (수집기, `ngds-monitoring`)
+| 파일 | 용도 |
+|---|---|
+| `values.yaml` | `targetNamespace`(수집 대상 앱 네임스페이스), 이미지, retention |
+| `templates/prometheus.yaml` | Prometheus + ClusterRole(조회 전용). 두 네임스페이스의 annotation 파드, kubelet, cAdvisor(노드 :10250 직접)를 scrape |
+| `templates/loki.yaml` | Loki single-binary, filesystem 스토리지 |
+| `templates/promtail.yaml` | promtail DaemonSet. `/var/log/pods/ngds_*`를 tail하고 경로에서 라벨을 뽑는다 |
+| `templates/exporters.yaml` | node-exporter, kube-state-metrics (on/off 가능) |
+
+### `cluster/` (관리자)
+| 파일 | 용도 |
+|---|---|
+| `namespace-rbac.yaml` | 네임스페이스 2개(PSA 라벨), 팀원(`ngds-devs`)·앱 러너(`ngds-ci`) Role |
+| `issue-kubeconfig.sh` | CSR API로 90일 kubeconfig 발급 |
+| `runner-setup.sh` | 앱 러너 LXC 112 등록·kubeconfig 갱신 |
 
 ### `eval/`
 | 파일 | 용도 |

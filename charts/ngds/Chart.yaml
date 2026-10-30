@@ -1,0 +1,7 @@
+apiVersion: v2
+name: ngds
+description: NGDS 8팀 RCA 대상 앱 — postgres(+exporter) + Neo4j KG + MCP 서버. 네임스페이스 ngds(restricted)
+type: application
+version: 0.2.0
+appVersion: "0.1.0"
+# 수집기(Prometheus/Loki/promtail/exporter)는 charts/ngds-monitoring (privileged 네임스페이스, 홈랩 인프라가 배포)

@@ -1,4 +1,6 @@
 FROM python:3.13-slim
+# GHCR 패키지를 이 레포에 연결 (GITHUB_TOKEN으로 push하려면 필요)
+LABEL org.opencontainers.image.source=https://github.com/sh1220/NGDS-team08
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /usr/local/bin/uv
 
