@@ -29,6 +29,7 @@ make undeploy      # helm uninstall
 팀원은 관리자에게 받은 `kubeconfig-<이름>.yaml`을 `KUBECONFIG`로 지정해서 쓴다. 이 kubeconfig는 `chabunsi` 네임스페이스 안에서만 동작한다.
 
 ## 클러스터와의 관계
+- **규칙:** 이 레포는 `chabunsi` 네임스페이스 안의 것만 설치한다. CRD·StorageClass·ClusterRole 같은 클러스터 전역 리소스나 공용 애드온(Prometheus 등)은 인프라 레포 담당이다(권한상으로도 막혀 있다).
 - 클러스터(Proxmox, 노드, Cilium, 스토리지)는 별도 인프라 레포가 관리한다. 이 레포는 그 위에 앱만 올린다.
 - PVC는 기본 StorageClass(`proxmox-zfs`)로 자동 생성된다. PV는 만들어진 노드에 묶인다.
 - `Service type: LoadBalancer`는 Cilium이 집 LAN IP(.244~.254)를 준다. 외부 공개는 Cloudflare Tunnel 연결 후(예정).
