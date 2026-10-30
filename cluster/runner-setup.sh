@@ -4,7 +4,7 @@
 # 러너가 받는 권한: chabunsi 네임스페이스의 chabunsi-ci Role(배포 리소스만, exec 없음) 하나뿐 (Proxmox·노드·클러스터 관리자 권한 없음)
 # 한계: runner group/Environment(유료)로 워크플로를 제한하지 않았다 → 레포를 private, 협업자만으로 유지한다
 set -euo pipefail
-REPO=sh1220/chabunsi HOST=192.168.45.239 KEY=~/.ssh/id_ed25519_homelab
+REPO=sh1220/NGDS-team08 HOST=192.168.45.239 KEY=~/.ssh/id_ed25519_homelab
 HELM=4.3.1 KUBECTL=1.37.1
 RUNNER=$(gh api repos/actions/runner/releases/latest --jq .tag_name | tr -d v)
 RUNNER_SHA=$(gh api repos/actions/runner/releases/latest --jq ".assets[] | select(.name==\"actions-runner-linux-x64-$RUNNER.tar.gz\") | .digest" | cut -d: -f2)

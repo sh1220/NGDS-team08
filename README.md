@@ -1,4 +1,4 @@
-# chabunsi
+# NGDS-team08
 
 차세대 분산 시스템(NGDS, 차분시) 8팀 프로젝트. FastMCP 서버를 홈랩 쿠버네티스에 헬름으로 배포한다.
 
