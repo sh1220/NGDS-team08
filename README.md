@@ -7,6 +7,9 @@ MAPE-K 관점에서 Knowledge는 그래프로 외부화하고, Analyze는 LLM과
 
 ## 홈랩 배포 구조
 
+![아키텍처](docs/architecture.png)
+원본: `docs/architecture.drawio` (생성기 `docs/generators/architecture.py`)
+
 | 네임스페이스 | Pod Security | 내용 | 배포 주체 | 팀원 권한 |
 |---|---|---|---|---|
 | `ngds` | restricted | postgres(+exporter 사이드카), neo4j, mcp — `charts/ngds` | main 머지 → `deploy.yml` → 앱 러너(LXC 112, 라벨 `ngds`) | 배포·exec·port-forward·부하 파드 생성 |
