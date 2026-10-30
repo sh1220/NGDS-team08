@@ -48,4 +48,7 @@ chown -R runner:runner \$D
 [ -f .service ] || ./svc.sh install runner >/dev/null
 ./svc.sh stop >/dev/null 2>&1 || true; ./svc.sh start >/dev/null
 X
+# 이미 등록된 러너는 config.sh를 건너뛰므로 사용자 라벨을 API로 맞춘다 (기본 라벨 self-hosted 등은 유지됨)
+ID=$(gh api repos/$REPO/actions/runners --jq '.runners[] | select(.name=="app-runner") | .id')
+gh api -X PUT repos/$REPO/actions/runners/$ID/labels -f 'labels[]=ngds' >/dev/null
 gh api repos/$REPO/actions/runners --jq '.runners[] | "\(.name) \(.status) \(.labels | map(.name) | join(","))"'
