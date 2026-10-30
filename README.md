@@ -1,14 +1,16 @@
 # chabunsi
 
-차세대 분산 시스템(차분시) 팀 프로젝트. FastMCP 서버를 홈랩 쿠버네티스에 헬름으로 배포한다.
+차세대 분산 시스템(NGDS, 차분시) 8팀 프로젝트. FastMCP 서버를 홈랩 쿠버네티스에 헬름으로 배포한다.
 
 | 경로 | 내용 |
 |---|---|
 | `app/` | FastMCP 서버 (`/mcp`, 메트릭 `:9000/metrics`) |
-| `Dockerfile` | 이미지 (`ghcr.io/sh1220/chabunsi`, **public** 패키지 — 코드가 이미지에 들어가니 비밀값을 넣지 말 것) |
+| `Dockerfile` | 이미지 (`ghcr.io/sh1220/ngds-team08-mcp`, **public** 패키지 — 코드가 이미지에 들어가니 비밀값을 넣지 말 것) |
 | `charts/chabunsi/` | 헬름 차트 (Deployment, Service, ServiceMonitor) |
 | `cluster/` | 네임스페이스·팀원 권한, 팀원 kubeconfig 발급 스크립트 (관리자용) |
 | `Makefile` | build / push / deploy / undeploy |
+
+이미지 이름 규칙: `ghcr.io/sh1220/ngds-team08-<구성요소>` (GHCR은 소문자만 허용)
 
 ## CI/CD
 | 워크플로 | 트리거 | 러너 | 내용 |

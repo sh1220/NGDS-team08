@@ -1,5 +1,5 @@
 # 이미지는 홈랩 노드(x86_64)용으로 빌드한다. 맥(arm64)에서도 --platform 으로 맞춘다.
-IMAGE ?= ghcr.io/sh1220/chabunsi
+IMAGE ?= ghcr.io/sh1220/ngds-team08-mcp
 TAG   ?= $(shell git rev-parse --short HEAD)
 NS    ?= chabunsi
 

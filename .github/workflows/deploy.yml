@@ -30,9 +30,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker build -t ghcr.io/sh1220/chabunsi:$TAG -t ghcr.io/sh1220/chabunsi:latest .
-          docker push ghcr.io/sh1220/chabunsi:$TAG
-          docker push ghcr.io/sh1220/chabunsi:latest
+          docker build -t ghcr.io/sh1220/ngds-team08-mcp:$TAG -t ghcr.io/sh1220/ngds-team08-mcp:latest .
+          docker push ghcr.io/sh1220/ngds-team08-mcp:$TAG
+          docker push ghcr.io/sh1220/ngds-team08-mcp:latest
   deploy:
     needs: build
     if: github.ref == 'refs/heads/main'
