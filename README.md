@@ -40,10 +40,26 @@ MAPE-K 관점에서 Knowledge는 그래프로 외부화하고, Analyze는 LLM과
 3. 다른 터미널에서 `make pf`를 실행한다. neo4j 7687/7474, mcp 8000 포트 포워딩과 Prometheus·Loki용 `kubectl proxy :8001`이 열린다. 주소는 `.env.example` 참고.
 4. 장애 주입: `make fault-*`, 원복: `make fault-clear`. 아래 표 참고.
 
+### 밖에서 조회하기 (kubeconfig, 그룹 `ngds-viewers`)
+팀원은 집 LAN 밖에 있으므로 Cloudflare Access TCP(`k8s.sh1220.com`)를 거쳐 API 서버에 붙는다. 권한은 **조회 전용**이다.
+- 허용: `ngds`의 파드, 로그, 이벤트, Deployment·StatefulSet, ConfigMap, PVC 조회. `ngds-monitoring` 조회와 Prometheus·Loki 프록시 GET
+- 불가: Secret, exec, port-forward, 수정·삭제, 다른 네임스페이스
+
+```bash
+brew install cloudflared kubectl        # 한 번만
+cloudflared access tcp --hostname k8s.sh1220.com --url 127.0.0.1:16443 &   # 처음엔 브라우저에서 메일 인증
+export KUBECONFIG=~/kubeconfig-<이름>.yaml   # 관리자에게 받은 파일 (90일)
+kubectl get pods                         # 기본 네임스페이스 ngds
+kubectl logs deploy/mcp
+kubectl -n ngds-monitoring get pods
+```
+Access 정책에 등록된 이메일만 터널을 통과한다.
+
 ### 관리자
 ```bash
 make cluster-init                                  # 네임스페이스 2개·권한 (재적용 가능)
-cluster/issue-kubeconfig.sh <팀원이름> [API 주소]   # 팀원 kubeconfig (그룹 ngds-devs, 90일)
+GROUP=ngds-viewers cluster/issue-kubeconfig.sh <이름> https://127.0.0.1:16443   # 조회 전용 팀원 kubeconfig (90일)
+cluster/issue-kubeconfig.sh <팀원이름> [API 주소]   # 배포·exec 가능 팀원 kubeconfig (그룹 ngds-devs, 90일, 현재 미발급)
 cluster/runner-setup.sh                            # 앱 러너 등록 + Environment monitoring·secret (90일마다 재실행해 kubeconfig 갱신)
 ```
 - 프로젝트를 끝낼 때: `helm uninstall ngds-monitoring -n ngds-monitoring` 후 `kubectl delete ns ngds ngds-monitoring`, ClusterRole `ngds-prometheus`·`ngds-kube-state-metrics` 삭제.
