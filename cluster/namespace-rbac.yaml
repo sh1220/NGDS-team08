@@ -182,18 +182,18 @@ subjects:
   - {kind: ServiceAccount, name: kube-state-metrics, namespace: ngds-monitoring}
 ---
 # ---- 조회 전용 팀원 (그룹 ngds-viewers): 밖에서 Cloudflare Access TCP(k8s.sh1220.com)로 붙는 kubeconfig용 ----
-# 상태·로그·이벤트만. Secret(helm 릴리스 값·비밀번호 포함)·exec·port-forward·쓰기 없음
+# 두 네임스페이스에 같은 조회 규칙. ClusterRole로 정의하되 RoleBinding으로만 묶으므로 각 네임스페이스 안에서만 유효하다.
+# Secret(helm 릴리스 값·비밀번호 포함)·ServiceAccount 토큰·exec·port-forward·쓰기 없음
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: ngds-view
-  namespace: ngds
 rules:
   - apiGroups: [""]
     resources: [pods, pods/log, services, endpoints, events, configmaps, persistentvolumeclaims]
     verbs: [get, list, watch]
   - apiGroups: ["apps"]
-    resources: [deployments, statefulsets, replicasets]
+    resources: [deployments, statefulsets, replicasets, daemonsets]
     verbs: [get, list, watch]
   - apiGroups: ["batch"]
     resources: [jobs, cronjobs]
@@ -206,9 +206,19 @@ metadata:
   namespace: ngds
 subjects:
   - {kind: Group, name: ngds-viewers, apiGroup: rbac.authorization.k8s.io}
-roleRef: {kind: Role, name: ngds-view, apiGroup: rbac.authorization.k8s.io}
+roleRef: {kind: ClusterRole, name: ngds-view, apiGroup: rbac.authorization.k8s.io}
 ---
-# 수집기 네임스페이스는 팀원(ngds-devs)과 같은 조회 권한 (Prometheus·Loki Service 프록시 GET 포함)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ngds-viewers-view
+  namespace: ngds-monitoring
+subjects:
+  - {kind: Group, name: ngds-viewers, apiGroup: rbac.authorization.k8s.io}
+  - {kind: Group, name: ngds-devs, apiGroup: rbac.authorization.k8s.io}
+roleRef: {kind: ClusterRole, name: ngds-view, apiGroup: rbac.authorization.k8s.io}
+---
+# 수집기 네임스페이스: 위 조회 + Prometheus·Loki Service 프록시 GET (ngds-monitoring-view)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:

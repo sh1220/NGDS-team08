@@ -42,7 +42,7 @@ MAPE-K 관점에서 Knowledge는 그래프로 외부화하고, Analyze는 LLM과
 
 ### 밖에서 조회하기 (kubeconfig, 그룹 `ngds-viewers`)
 팀원은 집 LAN 밖에 있으므로 Cloudflare Access TCP(`k8s.sh1220.com`)를 거쳐 API 서버에 붙는다. 권한은 **조회 전용**이다.
-- 허용: `ngds`의 파드, 로그, 이벤트, Deployment·StatefulSet, ConfigMap, PVC 조회. `ngds-monitoring` 조회와 Prometheus·Loki 프록시 GET
+- 허용: 두 네임스페이스(`ngds`, `ngds-monitoring`) 똑같이 파드, 로그, 이벤트, Service, ConfigMap, PVC, Deployment·StatefulSet·ReplicaSet·DaemonSet, Job 조회. 그리고 Prometheus·Loki 프록시 GET
 - 불가: Secret, exec, port-forward, 수정·삭제, 다른 네임스페이스
 
 ```bash
