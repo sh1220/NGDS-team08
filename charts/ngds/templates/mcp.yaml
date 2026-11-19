@@ -10,6 +10,10 @@ metadata:
 spec:
   # LoadBalancer: 집 LAN IP를 받아 bastion cloudflared가 mcp.sh1220.com(Cloudflare Access 뒤)으로 내보낸다
   type: {{ .Values.mcp.serviceType }}
+  {{- with .Values.mcp.lbSourceRanges }}
+  # LAN의 다른 기기는 못 붙게, Access를 거친 bastion 터널만 허용
+  loadBalancerSourceRanges: {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector: {app.kubernetes.io/name: mcp}
   ports:
     - {name: http, port: {{ .Values.mcp.port }}}
