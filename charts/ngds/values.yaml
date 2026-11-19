@@ -30,6 +30,9 @@ neo4j:
 mcp:
   image: ghcr.io/sh1220/ngds-team08-mcp:latest   # CI(deploy.yml)/Makefile이 커밋 태그로 덮어쓴다
   port: 8000
+  # 외부 공개: LAN IP(Cilium LB 풀 .244~.254) → bastion 터널 → https://mcp.sh1220.com/mcp (Access 정책 ngds)
+  serviceType: LoadBalancer
+  lbIP: 192.168.45.245
   prometheusUrl: http://prometheus.ngds-monitoring:9090
   lokiUrl: http://loki.ngds-monitoring:3100
   resources:

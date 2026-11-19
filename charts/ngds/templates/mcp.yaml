@@ -3,7 +3,13 @@ kind: Service
 metadata:
   name: mcp
   labels: {{- include "so.labels" "mcp" | nindent 4 }}
+  {{- with .Values.mcp.lbIP }}
+  annotations:
+    lbipam.cilium.io/ips: {{ . | quote }}
+  {{- end }}
 spec:
+  # LoadBalancer: 집 LAN IP를 받아 bastion cloudflared가 mcp.sh1220.com(Cloudflare Access 뒤)으로 내보낸다
+  type: {{ .Values.mcp.serviceType }}
   selector: {app.kubernetes.io/name: mcp}
   ports:
     - {name: http, port: {{ .Values.mcp.port }}}
